@@ -61,99 +61,311 @@ class EmailNode:
     # EMAIL DRAFT GENERATION
     # ========================================================
 
+#     async def draft_email(
+#         self,
+#         state: AgentState,
+#     ):
+
+#         query = state["query"]
+#         request_id = state[
+#           "request_id"
+#         ]
+
+#         prompt = f"""
+# You are an AI Email Assistant.
+
+# The user request is:
+
+# {query}
+
+# Extract:
+
+# 1. Recipient Email
+# 2. Subject
+# 3. Email Body
+
+# Return ONLY valid JSON with exactly these fields:
+
+# {{
+#     "to": "recipient@example.com",
+#     "subject": "Email subject",
+#     "body": "Email body"
+# }}
+
+# Do not return markdown.
+# Do not return explanations.
+# Do not return any text outside the JSON.
+# """
+
+#         generation_started = perf_counter()
+
+#         log_event(
+#             logger,
+#             level=logging.INFO,
+#             request_id=request_id,
+#             event="email_draft_generation_started",
+#         )
+
+#         try:
+
+#             draft = await self.structured_llm.ainvoke(
+#                 prompt
+#             )
+
+#         except Exception:
+
+#             latency_ms = round(
+#                 (perf_counter() - generation_started) * 1000,
+#                 2,
+#             )
+
+#             logger.exception(
+#                 "Email draft generation failed",
+#                 extra={
+#                     "event": "email_draft_generation_failed",
+#                     "context": {
+#                         "latency_ms": latency_ms,
+#                     },
+#                 },
+#                 request_id=request_id
+#             )
+
+#             raise
+
+#         latency_ms = round(
+#             (perf_counter() - generation_started) * 1000,
+#             2,
+#         )
+
+#         log_event(
+#             logger,
+#             level=logging.INFO,
+#             event="email_draft_generation_completed",
+#             latency_ms=latency_ms,
+#             request_id=request_id,
+#             status="success",
+#         )
+
+#         return {
+#             "email": {
+#                 "to": str(draft.to),
+#                 "subject": draft.subject,
+#                 "body": draft.body,
+#             }
+#         }
+
+
     async def draft_email(
-        self,
-        state: AgentState,
+    self,
+    state: AgentState,
     ):
 
-        query = state["query"]
-        request_id = state[
-          "request_id"
-        ]
+                    query = state["query"]
+                
+                    request_id = state[
+                        "request_id"
+                    ]
+                
+                    current_task_index = state.get(
+                        "current_task",
+                        0,
+                    )
+                
+                    tasks = state.get(
+                        "tasks",
+                        [],
+                    )
+                
+                    current_task = None
+                
+                    if current_task_index < len(tasks):
+                
+                        current_task = tasks[
+                            current_task_index
+                        ]
+                
+                    use_blog = False
+                
+                    if current_task is not None:
+                
+                        use_blog = current_task.use_blog
+                
+                    # ========================================================
+                    # BLOG → EMAIL
+                    # ========================================================
+                
+                    if use_blog:
+                
+                        blog = state.get(
+                            "blog"
+                        )
+                
+                        if not blog:
+                
+                            raise ValueError(
+                                "Email task requires a generated "
+                                "blog, but no blog exists in state."
+                            )
+                
+                        prompt = f"""
+                You are an AI Email Assistant.
+                
+                The user requested:
+                
+                {query}
+                
+                A blog has already been generated.
+                
+                Blog title:
+                {blog["title"]}
+                
+                The email should send this exact
+                generated blog.
+                
+                Your job is ONLY to determine:
+                
+                1. Recipient email
+                2. Email subject
+                
+                Do NOT rewrite the blog.
+                Do NOT summarize the blog.
+                Do NOT modify the blog.
+                
+                Return ONLY valid JSON:
+                
+                {{
+                    "to": "recipient@example.com",
+                    "subject": "Email subject",
+                    "body": "BLOG_PLACEHOLDER"
+                }}
+                
+                The body will be replaced by the
+                application with the exact generated blog.
+                """
+                
+                    # ========================================================
+                    # NORMAL EMAIL
+                    # ========================================================
+                
+                    else:
+                
+                        prompt = f"""
+                You are an AI Email Assistant.
+                
+                The user request is:
+                
+                {query}
+                
+                Extract:
+                
+                1. Recipient Email
+                2. Subject
+                3. Email Body
+                
+                Create the email requested by the user.
+                
+                Return ONLY valid JSON with exactly
+                these fields:
+                
+                {{
+                    "to": "recipient@example.com",
+                    "subject": "Email subject",
+                    "body": "Email body"
+                }}
+                
+                Do not return markdown.
+                Do not return explanations.
+                Do not return any text outside the JSON.
+                """
+                
+                    generation_started = perf_counter()
+                
+                    log_event(
+                        logger,
+                        level=logging.INFO,
+                        request_id=request_id,
+                        event="email_draft_generation_started",
+                        use_blog=use_blog,
+                    )
+                
+                    try:
+                
+                        draft = await self.structured_llm.ainvoke(
+                            prompt
+                        )
+                
+                    except Exception:
+                
+                        latency_ms = round(
+                            (
+                                perf_counter()
+                                - generation_started
+                            )
+                            * 1000,
+                            2,
+                        )
+                
+                        logger.exception(
+                            "Email draft generation failed",
+                            extra={
+                                "event": (
+                                    "email_draft_generation_failed"
+                                ),
+                                "context": {
+                                    "latency_ms": latency_ms,
+                                    "use_blog": use_blog,
+                                },
+                            },
+                            request_id=request_id,
+                        )
+                
+                        raise
+                
+                    latency_ms = round(
+                        (
+                            perf_counter()
+                            - generation_started
+                        )
+                        * 1000,
+                        2,
+                    )
+                
+                    # ========================================================
+                    # BUILD FINAL EMAIL
+                    # ========================================================
+                
+                    if use_blog:
+                
+                        blog = state["blog"]
+                
+                        email_body = (
+                            f"{blog['title']}\n\n"
+                            f"{blog['content']}"
+                        )
+                
+                    else:
+                
+                        email_body = draft.body
+                
+                    log_event(
+                        logger,
+                        level=logging.INFO,
+                        event="email_draft_generation_completed",
+                        latency_ms=latency_ms,
+                        request_id=request_id,
+                        use_blog=use_blog,
+                        status="success",
+                    )
+                
+                    return {
+                        "email": {
+                            "to": str(draft.to),
+                            "subject": draft.subject,
+                            "body": email_body,
+                        }
+                    }
 
-        prompt = f"""
-You are an AI Email Assistant.
-
-The user request is:
-
-{query}
-
-Extract:
-
-1. Recipient Email
-2. Subject
-3. Email Body
-
-Return ONLY valid JSON with exactly these fields:
-
-{{
-    "to": "recipient@example.com",
-    "subject": "Email subject",
-    "body": "Email body"
-}}
-
-Do not return markdown.
-Do not return explanations.
-Do not return any text outside the JSON.
-"""
-
-        generation_started = perf_counter()
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            request_id=request_id,
-            event="email_draft_generation_started",
-        )
-
-        try:
-
-            draft = await self.structured_llm.ainvoke(
-                prompt
-            )
-
-        except Exception:
-
-            latency_ms = round(
-                (perf_counter() - generation_started) * 1000,
-                2,
-            )
-
-            logger.exception(
-                "Email draft generation failed",
-                extra={
-                    "event": "email_draft_generation_failed",
-                    "context": {
-                        "latency_ms": latency_ms,
-                    },
-                },
-                request_id=request_id
-            )
-
-            raise
-
-        latency_ms = round(
-            (perf_counter() - generation_started) * 1000,
-            2,
-        )
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="email_draft_generation_completed",
-            latency_ms=latency_ms,
-            request_id=request_id,
-            status="success",
-        )
-
-        return {
-            "email": {
-                "to": str(draft.to),
-                "subject": draft.subject,
-                "body": draft.body,
-            }
-        }
-
+     
     # ========================================================
     # HUMAN APPROVAL
     # ========================================================

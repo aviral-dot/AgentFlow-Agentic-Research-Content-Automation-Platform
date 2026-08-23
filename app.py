@@ -125,6 +125,10 @@ async def lifespan(app: FastAPI):
 
             checkpointer = saver
 
+             # ------------------------------------------------
+            # NEW PLANNER + EXECUTOR GRAPH
+            # ------------------------------------------------
+
             graph_builder = GraphBuilder(
                 llm,
                 checkpointer,
@@ -137,6 +141,7 @@ async def lifespan(app: FastAPI):
                 level=logging.INFO,
                 event="langgraph_initialized",
                 persistence="postgresql",
+                architecture="planner_executor",
                 status="success",
             )
 
@@ -343,6 +348,7 @@ async def chat(request: Request):
           "tags": [
               "agentflow",
                "chat",
+               "planner-executor",
            ],
         }
 
@@ -393,8 +399,18 @@ async def chat(request: Request):
             2,
         )
 
-        route = result.get(
-            "route"
+          # ----------------------------------------------------
+        # WORKFLOW INFORMATION
+        # ----------------------------------------------------
+
+        tasks = result.get(
+            "tasks",
+            [],
+        )
+
+        completed_tasks = result.get(
+            "completed_tasks",
+            [],
         )
 
         log_event(
@@ -403,7 +419,8 @@ async def chat(request: Request):
             event="graph_execution_completed",
             request_id=request_id,
             thread_id=thread_id,
-            route=route,
+            task_count=len(tasks),
+            completed_tasks=completed_tasks,
             latency_ms=graph_latency_ms,
             status="success",
         )
@@ -435,7 +452,7 @@ async def chat(request: Request):
                 event="email_approval_requested",
                 request_id=request_id,
                 thread_id=thread_id,
-                route=route,
+                completed_tasks=completed_tasks,
                 latency_ms=latency_ms,
                 status="approval_required",
             )
@@ -446,18 +463,27 @@ async def chat(request: Request):
                 "status": "approval_required",
                 "thread_id": thread_id,
                 "approval": interrupt_data,
+                "completed_tasks": completed_tasks,
             }
 
         # ----------------------------------------------------
         # PROCESS GRAPH RESPONSE
         # ----------------------------------------------------
 
-        if route == "blog":
+        blog_data = result.get(
+            "blog"
+        )
 
-            blog_data = result.get(
-                "blog",
-                {},
-            )
+        response = result.get(
+            "response",
+            "",
+        )
+
+        # ------------------------------------------------
+        # BLOG RESPONSE
+        # ------------------------------------------------
+
+        if blog_data:
 
             title = blog_data.get(
                 "title",
@@ -469,19 +495,18 @@ async def chat(request: Request):
                 "",
             )
 
-            response = (
-                f"# {title}\n\n"
-                f"{content}"
-            )
+            if title or content:
 
-        elif route == "email":
+                response = (
+                    f"# {title}\n\n"
+                    f"{content}"
+                )
 
-            response = result.get(
-                "response",
-                "Email completed successfully.",
-            )
+        # ------------------------------------------------
+        # FALLBACK RESPONSE
+        # ------------------------------------------------
 
-        else:
+        if not response:
 
             response = (
                 "Request completed successfully."
@@ -493,7 +518,7 @@ async def chat(request: Request):
             event="graph_response_created",
             request_id=request_id,
             thread_id=thread_id,
-            route=route,
+            completed_tasks=completed_tasks,
         )
 
         # ----------------------------------------------------
@@ -521,7 +546,6 @@ async def chat(request: Request):
                 event="chat_request_blocked",
                 request_id=request_id,
                 thread_id=thread_id,
-                route=route,
                 stage="output",
                 reason="security_guardrail",
                 latency_ms=latency_ms,
@@ -557,7 +581,8 @@ async def chat(request: Request):
             event="chat_request_completed",
             request_id=request_id,
             thread_id=thread_id,
-            route=route,
+            completed_tasks=completed_tasks,
+            task_count=len(tasks),
             latency_ms=latency_ms,
             status="success",
         )
@@ -568,7 +593,8 @@ async def chat(request: Request):
             "status": "completed",
             "data": {
                 "response": response,
-                "route": route,
+                "completed_tasks": completed_tasks,
+                "task_count": len(tasks),
                 "query": result.get(
                     "query"
                 ),
@@ -742,6 +768,7 @@ async def email_approval(
               "agentflow",
               "email",
               "hitl",
+              "planner-executor",
           ],
     }       
 
@@ -772,6 +799,17 @@ async def email_approval(
             2,
         )
 
+
+        completed_tasks = result.get(
+            "completed_tasks",
+            [],
+        )
+
+        tasks = result.get(
+            "tasks",
+            [],
+        )
+
         log_event(
             logger,
             level=logging.INFO,
@@ -779,6 +817,7 @@ async def email_approval(
             request_id=request_id,
             thread_id=thread_id,
             decision=decision,
+            completed_tasks=completed_tasks,
             latency_ms=resume_latency_ms,
             status="success",
         )
@@ -817,6 +856,7 @@ async def email_approval(
                     "Email rejected. "
                     "Nothing was sent."
                 ),
+                "completed_tasks": completed_tasks,
             }
 
         # ----------------------------------------------------
@@ -858,6 +898,7 @@ async def email_approval(
                 "status": "approval_required",
                 "thread_id": thread_id,
                 "approval": interrupt_data,
+                "completed_tasks": completed_tasks,
             }
 
         # ----------------------------------------------------
@@ -931,6 +972,7 @@ async def email_approval(
             request_id=request_id,
             thread_id=thread_id,
             decision="approve",
+            completed_tasks=completed_tasks,
             route=result.get("route"),
             latency_ms=latency_ms,
             status="success",
@@ -943,9 +985,8 @@ async def email_approval(
             "thread_id": thread_id,
             "data": {
                 "response": response,
-                "route": result.get(
-                    "route"
-                ),
+                "completed_tasks":completed_tasks,
+                "task_count": len(tasks),
             },
         }
 
