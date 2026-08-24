@@ -1,101 +1,205 @@
-# from typing import TypedDict
-
-# from pydantic import BaseModel, Field
-
-
-# class Blog(BaseModel):
-#     title:str=Field(description="the title of the blog post")
-#     content:str=Field(description="The main content of the blog post")
-
-# class Email(BaseModel):
-#     to: str
-#     subject: str
-#     body: str
-
-# class AgentState(TypedDict):
-#     query: str              
-
-#     route: str              
-
-#     blog: Blog
-
-#     email: Email
-
-#     response: str
-
-#     tool_result: dict
-
-#     request_id: str
-
-#     approval: str
-
-
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
 
+# ============================================================
+# BLOG
+# ============================================================
+
+
 class Blog(BaseModel):
+    """
+    Generated blog artifact.
+    """
+
     title: str = Field(
-        description="The title of the blog post"
+        min_length=1,
+        description="The title of the blog post.",
     )
+
     content: str = Field(
-        description="The main content of the blog post"
+        min_length=1,
+        description="The main content of the blog post.",
     )
+
+
+# ============================================================
+# EMAIL
+# ============================================================
 
 
 class Email(BaseModel):
-    to: str
-    subject: str
-    body: str
+    """
+    Generated email artifact.
+    """
+
+    to: str = Field(
+        min_length=1,
+        description="Recipient email address.",
+    )
+
+    subject: str = Field(
+        min_length=1,
+        description="Email subject.",
+    )
+
+    body: str = Field(
+        min_length=1,
+        description="Email body.",
+    )
+
+
+# ============================================================
+# WORKFLOW TASK RESULT
+# ============================================================
+
+
+class WorkflowTaskResult(BaseModel):
+    """
+    Frontend-facing representation of one terminal
+    workflow task.
+    """
+
+    task_id: str = Field(
+        min_length=1,
+    )
+
+    task_type: Literal[
+        "blog",
+        "email",
+    ]
+
+    status: Literal[
+        "completed",
+        "rejected",
+        "failed",
+    ]
+
+    result: Any | None = None
+
+
+# ============================================================
+# TASK
+# ============================================================
 
 
 class Task(BaseModel):
     """
-    A single unit of work in the workflow.
+    Runtime representation of one workflow task.
+
+    Lifecycle:
+
+        pending
+            ↓
+        running
+            ↓
+        completed
+
+    or:
+
+        running → rejected
+
+    or:
+
+        running → failed
     """
 
-    id: str
+    id: str = Field(
+        min_length=1,
+    )
 
     type: Literal[
         "blog",
         "email",
     ]
 
+    description: str = Field(
+        min_length=1,
+    )
+
+    depends_on: list[str] = Field(
+        default_factory=list,
+    )
+
     use_blog: bool = False
 
     status: Literal[
         "pending",
+        "running",
         "completed",
+        "rejected",
+        "failed",
     ] = "pending"
+
+    # IMPORTANT:
+    # Keep the final result on the task itself.
+    result: Any | None = None
+
+
+# ============================================================
+# AGENT STATE
+# ============================================================
 
 
 class AgentState(TypedDict, total=False):
 
-    # Original user request
+    # --------------------------------------------------------
+    # USER REQUEST
+    # --------------------------------------------------------
+
     query: str
 
-    # Request correlation
     request_id: str
 
-    # Planner output
+    # --------------------------------------------------------
+    # PLANNER
+    # --------------------------------------------------------
+
     tasks: list[Task]
 
-    # Current task index
-    current_task: int
+    # --------------------------------------------------------
+    # EXECUTOR
+    # --------------------------------------------------------
 
-    # Completed task types
+    current_task: str | None
+
     completed_tasks: list[str]
 
-    # Generated artifacts
-    blog: Blog
-    email: Email
+    running_tasks: list[str]
 
-    # Workflow output
+    task_results: dict[str, Any]
+
+    # Result produced by the currently executing worker.
+    task_result: Any | None
+
+    # --------------------------------------------------------
+    # BLOG
+    # --------------------------------------------------------
+
+    blog: Blog | None
+
+    # --------------------------------------------------------
+    # EMAIL
+    # --------------------------------------------------------
+
+    email: Email | None
+
+    # --------------------------------------------------------
+    # WORKFLOW OUTPUT
+    # --------------------------------------------------------
+
+    workflow_results: list[WorkflowTaskResult]
+
     response: str
 
-    # External tool output
-    tool_result: dict
+    tool_result: dict | None
 
-    # HITL decision
-    approval: str
+    # --------------------------------------------------------
+    # HUMAN APPROVAL
+    # --------------------------------------------------------
+
+    approval: Literal[
+        "approve",
+        "reject",
+    ] | None

@@ -1,37 +1,44 @@
-from src.graphs.graph_builder import GraphBuilder
+import pytest
 
 
-def test_approved_email_routes_to_send():
-    builder = object.__new__(GraphBuilder)
+def test_approved_email_routes_to_send(graph_builder):
+    """
+    Approval must route the workflow to the email sending step.
+    """
 
-    result = builder.route_after_approval(
-        {
-            "approval": "approve"
-        }
-    )
+    state = {
+        "approval": "approve"
+    }
 
-    assert result == "send_email"
+    result = graph_builder.route_after_approval(state)
 
-
-def test_rejected_email_routes_to_end():
-    builder = object.__new__(GraphBuilder)
-
-    result = builder.route_after_approval(
-        {
-            "approval": "reject"
-        }
-    )
-
-    assert result == "end"
+    assert result == "send"
 
 
-def test_invalid_approval_routes_to_end():
-    builder = object.__new__(GraphBuilder)
+def test_rejected_email_routes_to_end(graph_builder):
+    """
+    Rejection must terminate the email workflow.
+    """
 
-    result = builder.route_after_approval(
-        {
-            "approval": "invalid"
-        }
-    )
+    state = {
+        "approval": "reject"
+    }
+
+    result = graph_builder.route_after_approval(state)
 
     assert result == "end"
+
+
+def test_invalid_approval_does_not_send(graph_builder):
+    """
+    Invalid approval decisions must never route to the
+    external email side effect.
+    """
+
+    state = {
+        "approval": "invalid"
+    }
+
+    result = graph_builder.route_after_approval(state)
+
+    assert result != "send"

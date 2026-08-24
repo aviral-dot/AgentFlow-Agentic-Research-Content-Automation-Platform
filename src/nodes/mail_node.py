@@ -17,6 +17,7 @@ logger = get_logger(__name__)
 
 
 class EmailDraft(BaseModel):
+
     model_config = {
         "str_strip_whitespace": True
     }
@@ -36,11 +37,13 @@ class EmailDraft(BaseModel):
 
 class EmailNode:
 
-    def __init__(self, llm):
+    def __init__(
+        self,
+        llm,
+    ):
 
         self.llm = llm
-       
-        
+
         self.email_tool = EmailTool()
 
         self.structured_llm = (
@@ -50,324 +53,236 @@ class EmailNode:
             )
         )
 
-        log_event(
-            logger,
-            level=logging.INFO,
-            
-            event="email_node_initialized",
-        )
+    # ========================================================
+    # CURRENT TASK
+    # ========================================================
 
-
-    async def draft_email(
-    self,
-    state: AgentState,
+    def get_current_task(
+        self,
+        state: AgentState,
     ):
 
-                    query = state["query"]
-                
-                    request_id = state[
-                        "request_id"
-                    ]
-                
-                    current_task_index = state.get(
-                        "current_task",
-                        0,
-                    )
-                
-                    tasks = state.get(
+        task_id = state.get(
+            "current_task"
+        )
+
+        if not task_id:
+            return None
+
+        for task in state.get(
+            "tasks",
+            [],
+        ):
+
+            if task.id == task_id:
+                return task
+
+        return None
+
+    # ========================================================
+    # BLOG DEPENDENCY
+    # ========================================================
+
+    def get_blog_dependency(
+        self,
+        state: AgentState,
+        current_task,
+    ):
+
+        if not current_task.use_blog:
+            return None
+
+        for dependency_id in current_task.depends_on:
+
+            dependency_task = next(
+                (
+                    task
+                    for task in state.get(
                         "tasks",
                         [],
                     )
-                
-                    current_task = None
-                
-                    if current_task_index < len(tasks):
-                
-                        current_task = tasks[
-                            current_task_index
-                        ]
-                
-                    use_blog = False
-                
-                    if current_task is not None:
-                
-                        use_blog = current_task.use_blog
-                
-                    # ========================================================
-                    # BLOG → EMAIL
-                    # ========================================================
-                
-                    if use_blog:
-                
-                        blog = state.get(
-                            "blog"
-                        )
-                
-                        if not blog:
-                
-                            raise ValueError(
-                                "Email task requires a generated "
-                                "blog, but no blog exists in state."
-                            )
-                
-                        prompt = f"""
-                You are an AI Email Assistant.
-                
-                The user requested:
-                
-                {query}
-                
-                A blog has already been generated.
-                
-                Blog title:
-                {blog["title"]}
-                
-                The email should send this exact
-                generated blog.
-                
-                Your job is ONLY to determine:
-                
-                1. Recipient email
-                2. Email subject
-                
-                Do NOT rewrite the blog.
-                Do NOT summarize the blog.
-                Do NOT modify the blog.
-                
-                Return ONLY valid JSON:
-                
-                {{
-                    "to": "recipient@example.com",
-                    "subject": "Email subject",
-                    "body": "BLOG_PLACEHOLDER"
-                }}
-                
-                The body will be replaced by the
-                application with the exact generated blog.
-                """
-                
-                    # ========================================================
-                    # NORMAL EMAIL
-                    # ========================================================
-                
-                    else:
-                
-                        prompt = f"""
-                You are an AI Email Assistant.
-                
-                The user request is:
-                
-                {query}
-                
-                Extract:
-                
-                1. Recipient Email
-                2. Subject
-                3. Email Body
-                
-                Create the email requested by the user.
-                
-                Return ONLY valid JSON with exactly
-                these fields:
-                
-                {{
-                    "to": "recipient@example.com",
-                    "subject": "Email subject",
-                    "body": "Email body"
-                }}
-                
-                Do not return markdown.
-                Do not return explanations.
-                Do not return any text outside the JSON.
-                """
-                
-                    generation_started = perf_counter()
-                
-                    log_event(
-                        logger,
-                        level=logging.INFO,
-                        request_id=request_id,
-                        event="email_draft_generation_started",
-                        use_blog=use_blog,
-                    )
-                
-                    try:
-                
-                        draft = await self.structured_llm.ainvoke(
-                            prompt
-                        )
-                
-                    except Exception:
-                
-                        latency_ms = round(
-                            (
-                                perf_counter()
-                                - generation_started
-                            )
-                            * 1000,
-                            2,
-                        )
-                
-                        logger.exception(
-                            "Email draft generation failed",
-                            extra={
-                                "event": (
-                                    "email_draft_generation_failed"
-                                ),
-                                "context": {
-                                    "latency_ms": latency_ms,
-                                    "use_blog": use_blog,
-                                },
-                            },
-                            request_id=request_id,
-                        )
-                
-                        raise
-                
-                    latency_ms = round(
-                        (
-                            perf_counter()
-                            - generation_started
-                        )
-                        * 1000,
-                        2,
-                    )
-                
-                    # ========================================================
-                    # BUILD FINAL EMAIL
-                    # ========================================================
-                
-                    if use_blog:
-                
-                        blog = state["blog"]
-                
-                        email_body = (
-                            f"{blog['title']}\n\n"
-                            f"{blog['content']}"
-                        )
-                
-                    else:
-                
-                        email_body = draft.body
-                
-                    log_event(
-                        logger,
-                        level=logging.INFO,
-                        event="email_draft_generation_completed",
-                        latency_ms=latency_ms,
-                        request_id=request_id,
-                        use_blog=use_blog,
-                        status="success",
-                    )
-                
-                    return {
-                        "email": {
-                            "to": str(draft.to),
-                            "subject": draft.subject,
-                            "body": email_body,
-                        }
-                    }
-
-     
-    # ========================================================
-    # HUMAN APPROVAL
-    # ========================================================
-
-    def approve_email(
-        self,
-        state: AgentState,
-    ):
-
-        email = state["email"]
-        request_id = state["request_id"]
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            request_id=request_id,
-            event="email_approval_requested"
-        )
-
-        decision = interrupt(
-            {
-                "type": "email_approval",
-                "message": (
-                    "Please approve or reject "
-                    "this email before sending."
+                    if task.id == dependency_id
                 ),
-                "email": {
-                    "to": email["to"],
-                    "subject": email["subject"],
-                    "body": email["body"],
-                },
-            }
+                None,
+            )
+
+            if dependency_task is None:
+                continue
+
+            if dependency_task.type != "blog":
+                continue
+
+            blog = state.get(
+                "task_results",
+                {},
+            ).get(
+                dependency_id
+            )
+
+            if not blog:
+                raise ValueError(
+                    f"Blog dependency '{dependency_id}' "
+                    "has no result."
+                )
+
+            if not isinstance(
+                blog,
+                dict,
+            ):
+                raise ValueError(
+                    "Blog dependency result must be a dictionary."
+                )
+
+            if not blog.get("title"):
+                raise ValueError(
+                    "Blog result is missing title."
+                )
+
+            if not blog.get("content"):
+                raise ValueError(
+                    "Blog result is missing content."
+                )
+
+            return blog
+
+        raise ValueError(
+            f"Email task '{current_task.id}' requires "
+            "a blog dependency."
         )
 
-        log_event(
-            logger,
-            level=logging.INFO,
-            request_id=request_id,
-            event="email_approval_decision_received",
-            decision=decision,
-        )
-
-        return {
-            "approval": decision,
-        }
-
     # ========================================================
-    # SEND EMAIL
+    # DRAFT
     # ========================================================
 
-    async def send_email(
+    async def draft_email(
         self,
         state: AgentState,
     ):
 
-        email = EmailDraft.model_validate(
-            state["email"]
+        request_id = state.get(
+            "request_id"
         )
-        request_id = state["request_id"]
 
-        send_started = perf_counter()
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            request_id=request_id,
-            event="email_send_started",
+        current_task = self.get_current_task(
+            state
         )
+
+        if current_task is None:
+            raise ValueError(
+                "No current email task exists."
+            )
+
+        if current_task.type != "email":
+            raise ValueError(
+                "Current task is not an email task."
+            )
+
+        blog = self.get_blog_dependency(
+            state,
+            current_task,
+        )
+
+        # ----------------------------------------------------
+        # BLOG → EMAIL
+        # ----------------------------------------------------
+
+        if blog is not None:
+
+            prompt = f"""
+You are an email assistant.
+
+Create an email for this task:
+
+{current_task.description}
+
+The email must contain the following generated blog
+EXACTLY as provided.
+
+BLOG TITLE:
+{blog["title"]}
+
+BLOG CONTENT:
+{blog["content"]}
+
+Determine only:
+
+1. recipient
+2. subject
+
+The application will construct the final email body.
+
+Return JSON:
+
+{{
+    "to": "recipient@example.com",
+    "subject": "Email subject",
+    "body": "placeholder"
+}}
+"""
+
+        # ----------------------------------------------------
+        # INDEPENDENT EMAIL
+        # ----------------------------------------------------
+
+        else:
+
+            prompt = f"""
+You are an email assistant.
+
+Execute ONLY this email task:
+
+{current_task.description}
+
+Determine:
+
+1. recipient
+2. subject
+3. email body
+
+Do not perform any other task.
+
+Return JSON only.
+"""
+
+        started = perf_counter()
 
         try:
 
-            result = await self.email_tool.send(
-                to=str(email.to),
-                subject=email.subject,
-                body=email.body,
+            draft = await self.structured_llm.ainvoke(
+                prompt
             )
 
         except Exception:
 
-            latency_ms = round(
-                (perf_counter() - send_started) * 1000,
-                2,
-            )
-
             logger.exception(
-                "Email sending failed",
-                request_id=request_id,
-                extra={
-                    "event": "email_send_failed",
-                    "context": {
-                        "latency_ms": latency_ms,
-                    },
-                },
+                "Email draft generation failed"
             )
 
             raise
 
+        # ----------------------------------------------------
+        # FINAL BODY
+        # ----------------------------------------------------
+
+        if blog is not None:
+
+            body = (
+                f"{blog['title']}\n\n"
+                f"{blog['content']}"
+            )
+
+        else:
+
+            body = draft.body
+
+        email = {
+            "to": str(draft.to),
+            "subject": draft.subject,
+            "body": body,
+        }
+
         latency_ms = round(
-            (perf_counter() - send_started) * 1000,
+            (perf_counter() - started) * 1000,
             2,
         )
 
@@ -375,13 +290,118 @@ class EmailNode:
             logger,
             level=logging.INFO,
             request_id=request_id,
-            event="email_send_completed",
+            event="email_draft_generation_completed",
+            task_id=current_task.id,
             latency_ms=latency_ms,
-            status="success",
         )
 
         return {
-            "response": "Email Sent Successfully",
+            "email": email,
+        }
+
+    # ========================================================
+    # APPROVAL
+    # ========================================================
+
+    def approve_email(
+        self,
+        state: AgentState,
+    ):
+
+        email = state.get(
+            "email"
+        )
+
+        if not email:
+            raise ValueError(
+                "Email draft is missing."
+            )
+
+        current_task = self.get_current_task(
+            state
+        )
+
+        task_id = (
+            current_task.id
+            if current_task
+            else None
+        )
+
+        decision = interrupt(
+            {
+                "type": "email_approval",
+                "task_id": task_id,
+                "message": (
+                    "Please approve or reject "
+                    "this email before sending."
+                ),
+                "email": email,
+            }
+        )
+
+        if isinstance(
+            decision,
+            dict,
+        ):
+
+            decision = decision.get(
+                "decision",
+                decision.get("approval"),
+            )
+
+        if decision not in {
+            "approve",
+            "reject",
+        }:
+
+            raise ValueError(
+                "Invalid approval decision."
+            )
+
+        return {
+            "approval": decision,
+        }
+
+    # ========================================================
+    # SEND
+    # ========================================================
+
+    async def send_email(
+        self,
+        state: AgentState,
+    ):
+
+        email_data = state.get(
+            "email"
+        )
+
+        if not email_data:
+            raise ValueError(
+                "Email draft is missing."
+            )
+
+        email = EmailDraft.model_validate(
+            email_data
+        )
+
+        result = await self.email_tool.send(
+            to=str(email.to),
+            subject=email.subject,
+            body=email.body,
+        )
+
+        email_result = {
+            "status": "sent",
+            "message": "Email Sent Successfully",
+            "to": str(email.to),
+            "subject": email.subject,
+            "body": email.body,
             "tool_result": result,
         }
 
+        return {
+            "email": email_data,
+            "response": "Email Sent Successfully",
+            "tool_result": result,
+            "task_result": email_result,
+        }

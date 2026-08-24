@@ -34,6 +34,7 @@ async def test_email_draft_returns_structured_email():
     class FakeLLM:
 
         def with_structured_output(self, schema, **kwargs):
+            assert schema == EmailDraft
             return FakeStructuredLLM()
 
     node = EmailNode(FakeLLM())
@@ -75,8 +76,43 @@ async def test_send_email_calls_email_tool(sample_email):
     )
 
     assert result["response"] == "Email Sent Successfully"
+
     assert result["tool_result"] == {
         "success": True
+    }
+
+
+@pytest.mark.asyncio
+async def test_send_email_returns_tool_failure(sample_email):
+    """
+    EmailNode should propagate the email tool result even when
+    the external email operation fails.
+    """
+
+    node = object.__new__(EmailNode)
+
+    node.email_tool = AsyncMock()
+
+    node.email_tool.send.return_value = {
+        "success": False,
+        "error": "Email service unavailable",
+    }
+
+    state = {
+        "email": sample_email
+    }
+
+    result = await node.send_email(state)
+
+    node.email_tool.send.assert_awaited_once_with(
+        to="test@example.com",
+        subject="Meeting Tomorrow",
+        body="This is a test email.",
+    )
+
+    assert result["tool_result"] == {
+        "success": False,
+        "error": "Email service unavailable",
     }
 
 
@@ -102,6 +138,7 @@ def test_approve_email_returns_approve_decision(
     payload = mock_interrupt.call_args.args[0]
 
     assert payload["type"] == "email_approval"
+
     assert payload["email"]["to"] == "test@example.com"
     assert payload["email"]["subject"] == "Meeting Tomorrow"
     assert payload["email"]["body"] == "This is a test email."
@@ -128,4 +165,42 @@ def test_approve_email_returns_reject_decision(
 
     mock_interrupt.assert_called_once()
 
+    payload = mock_interrupt.call_args.args[0]
+
+    assert payload["type"] == "email_approval"
+
     assert result["approval"] == "reject"
+
+
+def test_approve_email_sends_correct_approval_payload(
+    sample_email,
+):
+    """
+    The HITL interrupt should expose only the information
+    required by the approval UI/workflow.
+    """
+
+    node = object.__new__(EmailNode)
+
+    state = {
+        "email": sample_email
+    }
+
+    with patch(
+        "src.nodes.mail_node.interrupt"
+    ) as mock_interrupt:
+
+        mock_interrupt.return_value = "approve"
+
+        node.approve_email(state)
+
+    payload = mock_interrupt.call_args.args[0]
+
+    assert payload == {
+        "type": "email_approval",
+        "email": {
+            "to": "test@example.com",
+            "subject": "Meeting Tomorrow",
+            "body": "This is a test email.",
+        },
+    }

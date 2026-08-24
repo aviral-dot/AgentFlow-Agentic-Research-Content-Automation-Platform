@@ -3,7 +3,6 @@
 import logging
 from time import perf_counter
 
-
 from src.states.blogstate import AgentState
 from src.utils.loggers import (
     get_logger,
@@ -14,11 +13,11 @@ logger = get_logger(__name__)
 
 
 class BlogNode:
-    """
-    Node responsible for generating blog titles and content.
-    """
 
-    def __init__(self, llm):
+    def __init__(
+        self,
+        llm,
+    ):
 
         self.llm = llm
 
@@ -28,42 +27,72 @@ class BlogNode:
             event="blog_node_initialized",
         )
 
+    # ========================================================
+    # CURRENT TASK
+    # ========================================================
+
+    def _get_blog_description(
+        self,
+        state: AgentState,
+    ) -> str:
+
+        current_task_id = state.get(
+            "current_task"
+        )
+
+        if current_task_id:
+
+            for task in state.get(
+                "tasks",
+                [],
+            ):
+
+                if task.id == current_task_id:
+
+                    if task.description.strip():
+                        return task.description.strip()
+
+        query = state.get("query")
+
+        if query:
+            return query.strip()
+
+        return ""
+
+    # ========================================================
+    # TITLE
+    # ========================================================
+
     async def title_creation(
         self,
         state: AgentState,
     ):
-        """
-        Generate a title for the blog.
-        """
 
-        request_id = state["request_id"]
-
-        if "query" not in state or not state["query"]:
-            log_event(
-                logger,
-                level=logging.WARNING,
-                request_id=request_id,
-                event="blog_title_generation_skipped",
-                reason="query_missing",
-            )
-
-            return {}
-
-        prompt = """
-You are an expert blog content writer. Use Markdown formatting.
-Generate a blog title for the {query}.
-This title should be creative and SEO friendly.
-"""
-
-        system_message = prompt.format(
-            query=state["query"]
+        request_id = state.get(
+            "request_id"
         )
 
-        # ----------------------------------------------------
-        # TITLE GENERATION
-        # ----------------------------------------------------
+        description = self._get_blog_description(
+            state
+        )
 
-        generation_started = perf_counter()
+        if not description:
+            raise ValueError(
+                "Blog description is missing."
+            )
+
+        prompt = f"""
+You are a professional blog writer.
+
+Create a concise, professional and SEO-friendly
+title for this blog request:
+
+{description}
+
+Return ONLY the title.
+"""
+
+        started = perf_counter()
 
         log_event(
             logger,
@@ -75,91 +104,124 @@ This title should be creative and SEO friendly.
         try:
 
             response = await self.llm.ainvoke(
-                system_message
+                prompt
             )
 
         except Exception:
 
-            latency_ms = round(
-                (perf_counter() - generation_started) * 1000,
-                2,
-            )
-
             logger.exception(
-                "Blog title generation failed",
-                request_id=request_id,
-                extra={
-                    "event": "blog_title_generation_failed",
-                    "context": {
-                        "latency_ms": latency_ms,
-                    },
-                },
+                "Blog title generation failed"
             )
 
             raise
 
-        # ----------------------------------------------------
-        # TITLE GENERATION COMPLETED
-        # ----------------------------------------------------
-
         latency_ms = round(
-            (perf_counter() - generation_started) * 1000,
+            (perf_counter() - started) * 1000,
             2,
         )
 
-        title = response.content
+        title = response.content.strip()
 
         log_event(
             logger,
             level=logging.INFO,
+            request_id=request_id,
             event="blog_title_generation_completed",
             latency_ms=latency_ms,
-            request_id=request_id,
-            status="success",
         )
 
+        # ----------------------------------------------------
+        # IMPORTANT:
+        #
+        # state["blog"] can explicitly be None.
+        #
+        # state.get("blog", {}) does NOT protect against that.
+        #
+        # Therefore use:
+        #
+        # state.get("blog") or {}
+        # ----------------------------------------------------
+
+        blog = dict(
+            state.get("blog") or {}
+        )
+
+        blog["title"] = title
+
         return {
-            "blog": {
-                "title": title
-            }
+            "blog": blog,
         }
+
+    # ========================================================
+    # CONTENT
+    # ========================================================
 
     async def content_generation(
         self,
         state: AgentState,
     ):
-        """
-        Generate the main blog content.
-        """
 
-        request_id = state["request_id"]
-
-        if "query" not in state or not state["query"]:
-            log_event(
-                logger,
-                level=logging.WARNING,
-                request_id=request_id,
-                event="blog_content_generation_skipped",
-                reason="query_missing",
-            )
-
-            return {}
-
-        system_prompt = """
-You are an expert blog writer. Use Markdown formatting.
-Generate detailed blog content with a detailed breakdown
-for the {query}.
-"""
-
-        system_message = system_prompt.format(
-            query=state["query"]
+        request_id = state.get(
+            "request_id"
         )
 
+        description = self._get_blog_description(
+            state
+        )
+
+        if not description:
+            raise ValueError(
+                "Blog description is missing."
+            )
+
         # ----------------------------------------------------
-        # CONTENT GENERATION
+        # IMPORTANT:
+        #
+        # blog may be None.
         # ----------------------------------------------------
 
-        generation_started = perf_counter()
+        blog = state.get(
+            "blog"
+        ) or {}
+
+        title = blog.get(
+            "title",
+            ""
+        )
+
+        if not title:
+            raise ValueError(
+                "Blog title is missing before content generation."
+            )
+
+        prompt = f"""
+You are a professional blog writer.
+
+Write a BRIEF but useful blog.
+
+Blog request:
+{description}
+
+Title:
+{title}
+
+Requirements:
+
+- 250-500 words maximum.
+- Keep it concise.
+- Use Markdown.
+- Use a clear introduction.
+- Cover the most important points only.
+- Avoid unnecessary repetition.
+- Use short sections where appropriate.
+- Do not mention AI.
+- Do not mention agents.
+- Do not mention workflow execution.
+
+Return only the blog content.
+"""
+
+        started = perf_counter()
 
         log_event(
             logger,
@@ -171,37 +233,28 @@ for the {query}.
         try:
 
             response = await self.llm.ainvoke(
-                system_message
+                prompt
             )
 
         except Exception:
 
-            latency_ms = round(
-                (perf_counter() - generation_started) * 1000,
-                2,
-            )
-
             logger.exception(
-                "Blog content generation failed",
-                request_id=request_id,
-                extra={
-                    "event": "blog_content_generation_failed",
-                    "context": {
-                        "latency_ms": latency_ms,
-                    },
-                },
+                "Blog content generation failed"
             )
 
             raise
 
-        # ----------------------------------------------------
-        # CONTENT GENERATION COMPLETED
-        # ----------------------------------------------------
-
         latency_ms = round(
-            (perf_counter() - generation_started) * 1000,
+            (perf_counter() - started) * 1000,
             2,
         )
+
+        content = response.content.strip()
+
+        blog_result = {
+            "title": title,
+            "content": content,
+        }
 
         log_event(
             logger,
@@ -209,12 +262,9 @@ for the {query}.
             request_id=request_id,
             event="blog_content_generation_completed",
             latency_ms=latency_ms,
-            status="success",
         )
 
         return {
-            "blog": {
-                "title": state["blog"]["title"],
-                "content": response.content,
-            }
+            "blog": blog_result,
+            "task_result": blog_result,
         }

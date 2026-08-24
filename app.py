@@ -22,6 +22,7 @@ from src.utils.loggers import (
     log_event,
 )
 
+
 # ============================================================
 # ENVIRONMENT
 # ============================================================
@@ -71,6 +72,7 @@ checkpointer = None
 # ============================================================
 # APPLICATION LIFESPAN
 # ============================================================
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -125,8 +127,8 @@ async def lifespan(app: FastAPI):
 
             checkpointer = saver
 
-             # ------------------------------------------------
-            # NEW PLANNER + EXECUTOR GRAPH
+            # ------------------------------------------------
+            # BUILD PLANNER-EXECUTOR GRAPH
             # ------------------------------------------------
 
             graph_builder = GraphBuilder(
@@ -142,6 +144,10 @@ async def lifespan(app: FastAPI):
                 event="langgraph_initialized",
                 persistence="postgresql",
                 architecture="planner_executor",
+                workers=[
+                    "blog",
+                    "email",
+                ],
                 status="success",
             )
 
@@ -189,8 +195,8 @@ async def lifespan(app: FastAPI):
 # ============================================================
 
 app = FastAPI(
-    title="Blog and Email Multi-Agent API",
-    version="1.0.0",
+    title="Planner-Executor Blog & Email Automation API",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -199,22 +205,136 @@ app = FastAPI(
 # ROOT ENDPOINT
 # ============================================================
 
+
 @app.get("/")
 async def root():
 
     return {
-        "message": "Multi-Agent AI System is running"
+        "message": (
+            "Planner-Executor Multi-Agent "
+            "Workflow System is running"
+        ),
+        "architecture": "planner-executor",
+        "workers": [
+            "blog",
+            "email",
+        ],
     }
+
+
+# ============================================================
+# WORKFLOW RESULT HELPER
+# ============================================================
+
+
+def build_response_text(
+    workflow_results,
+) -> str:
+    """
+    Build a simple human-readable response from
+    completed workflow tasks.
+
+    The actual structured task results remain available
+    through workflow_results.
+    """
+
+    if not workflow_results:
+
+        return (
+            "Workflow completed successfully."
+        )
+
+    messages = []
+
+    for task_result in workflow_results:
+
+        task_type = task_result.get(
+            "task_type"
+        )
+
+        status = task_result.get(
+            "status"
+        )
+
+        if task_type == "blog":
+
+            if status == "completed":
+
+                messages.append(
+                    "Blog generated successfully."
+                )
+
+            elif status == "rejected":
+
+                messages.append(
+                    "Blog task was rejected."
+                )
+
+            elif status == "failed":
+
+                messages.append(
+                    "Blog task failed."
+                )
+
+        elif task_type == "email":
+
+            if status == "completed":
+
+                result = task_result.get(
+                    "result"
+                )
+
+                if (
+                    isinstance(result, dict)
+                    and result.get("status") == "sent"
+                ):
+
+                    messages.append(
+                        "Email sent successfully."
+                    )
+
+                else:
+
+                    messages.append(
+                        "Email workflow completed."
+                    )
+
+            elif status == "rejected":
+
+                messages.append(
+                    "Email was rejected. "
+                    "Nothing was sent."
+                )
+
+            elif status == "failed":
+
+                messages.append(
+                    "Email task failed."
+                )
+
+    if not messages:
+
+        return (
+            "Workflow completed successfully."
+        )
+
+    return " ".join(messages)
 
 
 # ============================================================
 # CHAT ENDPOINT
 # ============================================================
 
-@app.post("/chat")
-async def chat(request: Request):
 
-    request_id = str(uuid4())
+@app.post("/chat")
+async def chat(
+    request: Request,
+):
+
+    request_id = str(
+        uuid4()
+    )
+
     request_started = perf_counter()
 
     thread_id = None
@@ -228,9 +348,9 @@ async def chat(request: Request):
 
     try:
 
-        # ----------------------------------------------------
+        # ====================================================
         # PARSE REQUEST
-        # ----------------------------------------------------
+        # ====================================================
 
         data = await request.json()
 
@@ -243,9 +363,9 @@ async def chat(request: Request):
             "thread_id"
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # VALIDATE REQUEST
-        # ----------------------------------------------------
+        # ====================================================
 
         if not query:
 
@@ -285,9 +405,9 @@ async def chat(request: Request):
             thread_id=thread_id,
         )
 
-        # ----------------------------------------------------
-        # INPUT SECURITY
-        # ----------------------------------------------------
+        # ====================================================
+        # INPUT GUARDRAIL
+        # ====================================================
 
         input_safe = await check_input(
             query
@@ -326,45 +446,9 @@ async def chat(request: Request):
                 ),
             }
 
-        # ----------------------------------------------------
-        # LANGGRAPH CONFIG
-        # ----------------------------------------------------
-
-        environment = os.getenv(
-            "ENVIRONMENT",
-            "development",
-        )
-
-        config = {
-            "configurable": {
-                "thread_id": thread_id,
-         },
-         "metadata": {
-              "request_id": request_id,
-              "workflow": "agentflow",
-              "feature": "chat",
-               "environment": environment,
-           },
-          "tags": [
-              "agentflow",
-               "chat",
-               "planner-executor",
-           ],
-        }
-
-        # ----------------------------------------------------
-        # LANGGRAPH EXECUTION
-        # ----------------------------------------------------
-
-        graph_started = perf_counter()
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="graph_execution_started",
-            request_id=request_id,
-            thread_id=thread_id,
-        )
+        # ====================================================
+        # GRAPH VALIDATION
+        # ====================================================
 
         if graph is None:
 
@@ -381,6 +465,47 @@ async def chat(request: Request):
                 status_code=503,
                 detail="Application is not ready",
             )
+
+        # ====================================================
+        # LANGGRAPH CONFIG
+        # ====================================================
+
+        environment = os.getenv(
+            "ENVIRONMENT",
+            "development",
+        )
+
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+            },
+            "metadata": {
+                "request_id": request_id,
+                "workflow": "planner_executor",
+                "feature": "chat",
+                "environment": environment,
+            },
+            "tags": [
+                "planner-executor",
+                "blog",
+                "email",
+                "chat",
+            ],
+        }
+
+        # ====================================================
+        # GRAPH EXECUTION
+        # ====================================================
+
+        graph_started = perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="graph_execution_started",
+            request_id=request_id,
+            thread_id=thread_id,
+        )
 
         result = await graph.ainvoke(
             {
@@ -399,9 +524,9 @@ async def chat(request: Request):
             2,
         )
 
-          # ----------------------------------------------------
-        # WORKFLOW INFORMATION
-        # ----------------------------------------------------
+        # ====================================================
+        # WORKFLOW STATE
+        # ====================================================
 
         tasks = result.get(
             "tasks",
@@ -413,6 +538,20 @@ async def chat(request: Request):
             [],
         )
 
+        running_tasks = result.get(
+            "running_tasks",
+            [],
+        )
+
+        current_task = result.get(
+            "current_task"
+        )
+
+        workflow_results = result.get(
+            "workflow_results",
+            [],
+        )
+
         log_event(
             logger,
             level=logging.INFO,
@@ -421,13 +560,16 @@ async def chat(request: Request):
             thread_id=thread_id,
             task_count=len(tasks),
             completed_tasks=completed_tasks,
+            running_tasks=running_tasks,
+            current_task=current_task,
+            workflow_results=workflow_results,
             latency_ms=graph_latency_ms,
             status="success",
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # HUMAN APPROVAL REQUIRED
-        # ----------------------------------------------------
+        # ====================================================
 
         if "__interrupt__" in result:
 
@@ -452,6 +594,7 @@ async def chat(request: Request):
                 event="email_approval_requested",
                 request_id=request_id,
                 thread_id=thread_id,
+                current_task=current_task,
                 completed_tasks=completed_tasks,
                 latency_ms=latency_ms,
                 status="approval_required",
@@ -463,67 +606,23 @@ async def chat(request: Request):
                 "status": "approval_required",
                 "thread_id": thread_id,
                 "approval": interrupt_data,
+                "workflow_results": workflow_results,
                 "completed_tasks": completed_tasks,
+                "current_task": current_task,
+                "task_count": len(tasks),
             }
 
-        # ----------------------------------------------------
-        # PROCESS GRAPH RESPONSE
-        # ----------------------------------------------------
+        # ====================================================
+        # FINAL WORKFLOW RESULTS
+        # ====================================================
 
-        blog_data = result.get(
-            "blog"
+        response = build_response_text(
+            workflow_results
         )
 
-        response = result.get(
-            "response",
-            "",
-        )
-
-        # ------------------------------------------------
-        # BLOG RESPONSE
-        # ------------------------------------------------
-
-        if blog_data:
-
-            title = blog_data.get(
-                "title",
-                "",
-            )
-
-            content = blog_data.get(
-                "content",
-                "",
-            )
-
-            if title or content:
-
-                response = (
-                    f"# {title}\n\n"
-                    f"{content}"
-                )
-
-        # ------------------------------------------------
-        # FALLBACK RESPONSE
-        # ------------------------------------------------
-
-        if not response:
-
-            response = (
-                "Request completed successfully."
-            )
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="graph_response_created",
-            request_id=request_id,
-            thread_id=thread_id,
-            completed_tasks=completed_tasks,
-        )
-
-        # ----------------------------------------------------
-        # OUTPUT SECURITY
-        # ----------------------------------------------------
+        # ====================================================
+        # OUTPUT GUARDRAIL
+        # ====================================================
 
         output_safe = await check_output(
             response
@@ -562,9 +661,9 @@ async def chat(request: Request):
                 ),
             }
 
-        # ----------------------------------------------------
+        # ====================================================
         # SUCCESS
-        # ----------------------------------------------------
+        # ====================================================
 
         latency_ms = round(
             (
@@ -593,7 +692,10 @@ async def chat(request: Request):
             "status": "completed",
             "data": {
                 "response": response,
+                "workflow_results": workflow_results,
                 "completed_tasks": completed_tasks,
+                "running_tasks": running_tasks,
+                "current_task": current_task,
                 "task_count": len(tasks),
                 "query": result.get(
                     "query"
@@ -602,8 +704,17 @@ async def chat(request: Request):
             },
         }
 
+    # ========================================================
+    # HTTP ERROR
+    # ========================================================
+
     except HTTPException:
+
         raise
+
+    # ========================================================
+    # UNEXPECTED ERROR
+    # ========================================================
 
     except Exception:
 
@@ -638,12 +749,16 @@ async def chat(request: Request):
 # EMAIL APPROVAL ENDPOINT
 # ============================================================
 
+
 @app.post("/email/approval")
 async def email_approval(
     request: Request,
 ):
 
-    request_id = str(uuid4())
+    request_id = str(
+        uuid4()
+    )
+
     request_started = perf_counter()
 
     thread_id = None
@@ -657,9 +772,9 @@ async def email_approval(
 
     try:
 
-        # ----------------------------------------------------
+        # ====================================================
         # PARSE REQUEST
-        # ----------------------------------------------------
+        # ====================================================
 
         data = await request.json()
 
@@ -671,9 +786,9 @@ async def email_approval(
             "decision"
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # VALIDATE THREAD
-        # ----------------------------------------------------
+        # ====================================================
 
         if not thread_id:
 
@@ -690,14 +805,14 @@ async def email_approval(
                 detail="thread_id is required",
             )
 
-        # ----------------------------------------------------
+        # ====================================================
         # VALIDATE DECISION
-        # ----------------------------------------------------
+        # ====================================================
 
-        if decision not in [
+        if decision not in {
             "approve",
             "reject",
-        ]:
+        }:
 
             log_event(
                 logger,
@@ -716,22 +831,9 @@ async def email_approval(
                 ),
             )
 
-        # ----------------------------------------------------
-        # HUMAN DECISION
-        # ----------------------------------------------------
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="email_approval_decision_received",
-            request_id=request_id,
-            thread_id=thread_id,
-            decision=decision,
-        )
-
-        # ----------------------------------------------------
-        # RESUME LANGGRAPH
-        # ----------------------------------------------------
+        # ====================================================
+        # GRAPH VALIDATION
+        # ====================================================
 
         if graph is None:
 
@@ -749,28 +851,48 @@ async def email_approval(
                 detail="Application is not ready",
             )
 
+        # ====================================================
+        # LOG APPROVAL DECISION
+        # ====================================================
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="email_approval_decision_received",
+            request_id=request_id,
+            thread_id=thread_id,
+            decision=decision,
+        )
+
+        # ====================================================
+        # LANGGRAPH CONFIG
+        # ====================================================
+
         environment = os.getenv(
-         "ENVIRONMENT",
-         "development",
-    )
+            "ENVIRONMENT",
+            "development",
+        )
 
         config = {
-          "configurable": {
-             "thread_id": thread_id,
-         },
-         "metadata": {
-              "request_id": request_id,
-              "workflow": "agentflow",
-              "feature": "email_approval",
-              "environment": environment,
-          },
-          "tags": [
-              "agentflow",
-              "email",
-              "hitl",
-              "planner-executor",
-          ],
-    }       
+            "configurable": {
+                "thread_id": thread_id,
+            },
+            "metadata": {
+                "request_id": request_id,
+                "workflow": "planner_executor",
+                "feature": "email_approval",
+                "environment": environment,
+            },
+            "tags": [
+                "planner-executor",
+                "email",
+                "hitl",
+            ],
+        }
+
+        # ====================================================
+        # RESUME GRAPH
+        # ====================================================
 
         resume_started = perf_counter()
 
@@ -799,14 +921,31 @@ async def email_approval(
             2,
         )
 
+        # ====================================================
+        # WORKFLOW STATE
+        # ====================================================
+
+        tasks = result.get(
+            "tasks",
+            [],
+        )
 
         completed_tasks = result.get(
             "completed_tasks",
             [],
         )
 
-        tasks = result.get(
-            "tasks",
+        running_tasks = result.get(
+            "running_tasks",
+            [],
+        )
+
+        current_task = result.get(
+            "current_task"
+        )
+
+        workflow_results = result.get(
+            "workflow_results",
             [],
         )
 
@@ -818,15 +957,45 @@ async def email_approval(
             thread_id=thread_id,
             decision=decision,
             completed_tasks=completed_tasks,
+            current_task=current_task,
+            workflow_results=workflow_results,
             latency_ms=resume_latency_ms,
             status="success",
         )
 
-        # ----------------------------------------------------
-        # REJECT
-        # ----------------------------------------------------
+        # ====================================================
+        # ANOTHER INTERRUPT
+        # ====================================================
+
+        if "__interrupt__" in result:
+
+            interrupt_data = (
+                result[
+                    "__interrupt__"
+                ][0].value
+            )
+
+            return {
+                "success": True,
+                "blocked": False,
+                "status": "approval_required",
+                "thread_id": thread_id,
+                "approval": interrupt_data,
+                "workflow_results": workflow_results,
+                "completed_tasks": completed_tasks,
+                "current_task": current_task,
+                "task_count": len(tasks),
+            }
+
+        # ====================================================
+        # REJECTED EMAIL
+        # ====================================================
 
         if decision == "reject":
+
+            response = build_response_text(
+                workflow_results
+            )
 
             latency_ms = round(
                 (
@@ -843,6 +1012,7 @@ async def email_approval(
                 event="email_rejected",
                 request_id=request_id,
                 thread_id=thread_id,
+                completed_tasks=completed_tasks,
                 latency_ms=latency_ms,
                 status="rejected",
             )
@@ -856,12 +1026,17 @@ async def email_approval(
                     "Email rejected. "
                     "Nothing was sent."
                 ),
-                "completed_tasks": completed_tasks,
+                "data": {
+                    "response": response,
+                    "workflow_results": workflow_results,
+                    "completed_tasks": completed_tasks,
+                    "task_count": len(tasks),
+                },
             }
 
-        # ----------------------------------------------------
+        # ====================================================
         # APPROVED
-        # ----------------------------------------------------
+        # ====================================================
 
         log_event(
             logger,
@@ -871,48 +1046,17 @@ async def email_approval(
             thread_id=thread_id,
         )
 
-        # ----------------------------------------------------
-        # ANOTHER INTERRUPT
-        # ----------------------------------------------------
+        # ====================================================
+        # FINAL RESPONSE
+        # ====================================================
 
-        if "__interrupt__" in result:
-
-            interrupt_data = (
-                result[
-                    "__interrupt__"
-                ][0].value
-            )
-
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="email_approval_requested",
-                request_id=request_id,
-                thread_id=thread_id,
-                reason="additional_approval_required",
-            )
-
-            return {
-                "success": True,
-                "blocked": False,
-                "status": "approval_required",
-                "thread_id": thread_id,
-                "approval": interrupt_data,
-                "completed_tasks": completed_tasks,
-            }
-
-        # ----------------------------------------------------
-        # EMAIL RESPONSE
-        # ----------------------------------------------------
-
-        response = result.get(
-            "response",
-            "Email sent successfully.",
+        response = build_response_text(
+            workflow_results
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # OUTPUT SECURITY
-        # ----------------------------------------------------
+        # ====================================================
 
         output_safe = await check_output(
             response
@@ -952,9 +1096,9 @@ async def email_approval(
                 ),
             }
 
-        # ----------------------------------------------------
+        # ====================================================
         # SUCCESS
-        # ----------------------------------------------------
+        # ====================================================
 
         latency_ms = round(
             (
@@ -973,7 +1117,6 @@ async def email_approval(
             thread_id=thread_id,
             decision="approve",
             completed_tasks=completed_tasks,
-            route=result.get("route"),
             latency_ms=latency_ms,
             status="success",
         )
@@ -985,13 +1128,25 @@ async def email_approval(
             "thread_id": thread_id,
             "data": {
                 "response": response,
-                "completed_tasks":completed_tasks,
+                "workflow_results": workflow_results,
+                "completed_tasks": completed_tasks,
+                "running_tasks": running_tasks,
+                "current_task": current_task,
                 "task_count": len(tasks),
             },
         }
 
+    # ========================================================
+    # HTTP ERROR
+    # ========================================================
+
     except HTTPException:
+
         raise
+
+    # ========================================================
+    # UNEXPECTED ERROR
+    # ========================================================
 
     except Exception:
 
@@ -1027,6 +1182,7 @@ async def email_approval(
 # ============================================================
 # LOCAL DEVELOPMENT
 # ============================================================
+
 
 if __name__ == "__main__":
 

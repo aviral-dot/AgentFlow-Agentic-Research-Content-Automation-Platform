@@ -30,6 +30,35 @@ async def test_title_creation_returns_title():
 
 
 @pytest.mark.asyncio
+async def test_title_creation_passes_query_to_llm():
+    captured_prompt = None
+
+    async def fake_ainvoke(prompt):
+        nonlocal captured_prompt
+
+        captured_prompt = prompt
+
+        return SimpleNamespace(
+            content="The Future of Generative AI"
+        )
+
+    llm = SimpleNamespace(
+        ainvoke=fake_ainvoke
+    )
+
+    node = BlogNode(llm)
+
+    state = {
+        "query": "Generative AI"
+    }
+
+    await node.title_creation(state)
+
+    assert captured_prompt is not None
+    assert "Generative AI" in captured_prompt
+
+
+@pytest.mark.asyncio
 async def test_content_generation_uses_existing_title():
     async def fake_ainvoke(prompt):
         return SimpleNamespace(
@@ -63,12 +92,46 @@ async def test_content_generation_uses_existing_title():
         "software development."
     )
 
+
+@pytest.mark.asyncio
+async def test_content_generation_passes_title_to_llm():
+    captured_prompt = None
+
+    async def fake_ainvoke(prompt):
+        nonlocal captured_prompt
+
+        captured_prompt = prompt
+
+        return SimpleNamespace(
+            content="Generated blog content."
+        )
+
+    llm = SimpleNamespace(
+        ainvoke=fake_ainvoke
+    )
+
+    node = BlogNode(llm)
+
+    state = {
+        "query": "Generative AI",
+        "blog": {
+            "title": "The Future of Generative AI"
+        },
+    }
+
+    await node.content_generation(state)
+
+    assert captured_prompt is not None
+    assert "The Future of Generative AI" in captured_prompt
+
+
 @pytest.mark.asyncio
 async def test_title_creation_does_not_call_llm_for_empty_query():
     called = False
 
     async def fake_ainvoke(prompt):
         nonlocal called
+
         called = True
 
         return SimpleNamespace(
@@ -87,3 +150,22 @@ async def test_title_creation_does_not_call_llm_for_empty_query():
 
     assert result == {}
     assert called is False
+
+
+@pytest.mark.asyncio
+async def test_title_creation_propagates_llm_failure():
+    async def fake_ainvoke(prompt):
+        raise RuntimeError("LLM unavailable")
+
+    llm = SimpleNamespace(
+        ainvoke=fake_ainvoke
+    )
+
+    node = BlogNode(llm)
+
+    state = {
+        "query": "Generative AI"
+    }
+
+    with pytest.raises(RuntimeError, match="LLM unavailable"):
+        await node.title_creation(state)
