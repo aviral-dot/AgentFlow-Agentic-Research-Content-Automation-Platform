@@ -1,3 +1,5 @@
+from typing import Any
+
 from src.executors.task_scheduler import TaskScheduler
 from src.states.blogstate import AgentState, Task
 
@@ -6,7 +8,16 @@ class WorkflowExecutor:
     """
     Manages workflow task lifecycle.
 
+    The WorkflowExecutor is responsible for state
+    transitions only.
+
     It does NOT execute business logic.
+
+    Business logic belongs to worker nodes:
+
+        ResearchNode
+        BlogNode
+        EmailNode
 
     Lifecycle:
 
@@ -14,16 +25,22 @@ class WorkflowExecutor:
             ↓
         running
             ↓
-        completed / rejected / failed
+        completed
+
+        running
+            ↓
+        rejected
+
+        running
+            ↓
+        failed
     """
 
     def __init__(self):
 
         self.scheduler = TaskScheduler()
 
-    # ========================================================
-    # LOOKUP
-    # ========================================================
+    
 
     def get_task_by_id(
         self,
@@ -53,9 +70,7 @@ class WorkflowExecutor:
             task_id,
         )
 
-    # ========================================================
-    # SCHEDULING
-    # ========================================================
+    
 
     def get_ready_tasks(
         self,
@@ -75,15 +90,18 @@ class WorkflowExecutor:
             state
         )
 
-    # ========================================================
-    # RUNNING
-    # ========================================================
+   
 
     def mark_task_running(
         self,
         state: AgentState,
         task_id: str,
     ) -> dict:
+        """
+        Transition:
+
+            pending → running
+        """
 
         task = self.get_task_by_id(
             state,
@@ -91,17 +109,21 @@ class WorkflowExecutor:
         )
 
         if task is None:
+
             raise ValueError(
                 f"Task '{task_id}' does not exist."
             )
 
         if task.status != "pending":
+
             raise ValueError(
                 f"Task '{task_id}' cannot transition "
                 f"from '{task.status}' to 'running'."
             )
 
-        tasks = []
+      
+
+        tasks: list[Task] = []
 
         for current_task in state.get(
             "tasks",
@@ -116,7 +138,11 @@ class WorkflowExecutor:
                     }
                 )
 
-            tasks.append(current_task)
+            tasks.append(
+                current_task
+            )
+
+        
 
         running_tasks = list(
             state.get(
@@ -126,7 +152,10 @@ class WorkflowExecutor:
         )
 
         if task_id not in running_tasks:
-            running_tasks.append(task_id)
+
+            running_tasks.append(
+                task_id
+            )
 
         return {
             "tasks": tasks,
@@ -134,16 +163,24 @@ class WorkflowExecutor:
             "current_task": task_id,
         }
 
-    # ========================================================
-    # COMPLETED
-    # ========================================================
+  
 
     def mark_task_completed(
         self,
         state: AgentState,
         task_id: str,
-        result,
+        result: Any,
     ) -> dict:
+        """
+        Transition:
+
+            running → completed
+
+        Stores the result in:
+
+            Task.result
+            state.task_results
+        """
 
         task = self.get_task_by_id(
             state,
@@ -151,17 +188,21 @@ class WorkflowExecutor:
         )
 
         if task is None:
+
             raise ValueError(
                 f"Task '{task_id}' does not exist."
             )
 
         if task.status != "running":
+
             raise ValueError(
                 f"Task '{task_id}' cannot transition "
                 f"from '{task.status}' to 'completed'."
             )
 
-        tasks = []
+     
+
+        tasks: list[Task] = []
 
         for current_task in state.get(
             "tasks",
@@ -177,7 +218,11 @@ class WorkflowExecutor:
                     }
                 )
 
-            tasks.append(current_task)
+            tasks.append(
+                current_task
+            )
+
+       
 
         completed_tasks = list(
             state.get(
@@ -187,7 +232,12 @@ class WorkflowExecutor:
         )
 
         if task_id not in completed_tasks:
-            completed_tasks.append(task_id)
+
+            completed_tasks.append(
+                task_id
+            )
+
+       
 
         running_tasks = [
             running_task_id
@@ -197,6 +247,8 @@ class WorkflowExecutor:
             )
             if running_task_id != task_id
         ]
+
+       
 
         task_results = dict(
             state.get(
@@ -213,17 +265,23 @@ class WorkflowExecutor:
             "running_tasks": running_tasks,
             "task_results": task_results,
             "current_task": None,
+            "task_result": result,
         }
 
-    # ========================================================
-    # REJECTED
-    # ========================================================
+   
 
     def mark_task_rejected(
         self,
         state: AgentState,
         task_id: str,
     ) -> dict:
+        """
+        Transition:
+
+            running → rejected
+
+        Primarily used by Human-in-the-loop email approval.
+        """
 
         task = self.get_task_by_id(
             state,
@@ -231,11 +289,13 @@ class WorkflowExecutor:
         )
 
         if task is None:
+
             raise ValueError(
                 f"Task '{task_id}' does not exist."
             )
 
         if task.status != "running":
+
             raise ValueError(
                 f"Task '{task_id}' cannot be rejected "
                 f"from '{task.status}'."
@@ -243,10 +303,14 @@ class WorkflowExecutor:
 
         rejection_result = {
             "status": "rejected",
-            "message": "Task rejected by human approval.",
+            "message": (
+                "Task rejected by human approval."
+            ),
         }
 
-        tasks = []
+       
+
+        tasks: list[Task] = []
 
         for current_task in state.get(
             "tasks",
@@ -262,7 +326,11 @@ class WorkflowExecutor:
                     }
                 )
 
-            tasks.append(current_task)
+            tasks.append(
+                current_task
+            )
+
+        
 
         running_tasks = [
             running_task_id
@@ -272,6 +340,8 @@ class WorkflowExecutor:
             )
             if running_task_id != task_id
         ]
+
+       
 
         task_results = dict(
             state.get(
@@ -287,11 +357,10 @@ class WorkflowExecutor:
             "running_tasks": running_tasks,
             "task_results": task_results,
             "current_task": None,
+            "task_result": rejection_result,
         }
 
-    # ========================================================
-    # FAILED
-    # ========================================================
+   
 
     def mark_task_failed(
         self,
@@ -299,6 +368,11 @@ class WorkflowExecutor:
         task_id: str,
         error: str,
     ) -> dict:
+        """
+        Transition:
+
+            running → failed
+        """
 
         task = self.get_task_by_id(
             state,
@@ -306,8 +380,19 @@ class WorkflowExecutor:
         )
 
         if task is None:
+
             raise ValueError(
                 f"Task '{task_id}' does not exist."
+            )
+
+        if task.status not in {
+            "running",
+            "pending",
+        }:
+
+            raise ValueError(
+                f"Task '{task_id}' cannot be marked "
+                f"failed from '{task.status}'."
             )
 
         failure_result = {
@@ -315,7 +400,9 @@ class WorkflowExecutor:
             "error": error,
         }
 
-        tasks = []
+       
+
+        tasks: list[Task] = []
 
         for current_task in state.get(
             "tasks",
@@ -331,7 +418,11 @@ class WorkflowExecutor:
                     }
                 )
 
-            tasks.append(current_task)
+            tasks.append(
+                current_task
+            )
+
+       
 
         running_tasks = [
             running_task_id
@@ -341,6 +432,8 @@ class WorkflowExecutor:
             )
             if running_task_id != task_id
         ]
+
+       
 
         task_results = dict(
             state.get(
@@ -356,11 +449,10 @@ class WorkflowExecutor:
             "running_tasks": running_tasks,
             "task_results": task_results,
             "current_task": None,
+            "task_result": failure_result,
         }
 
-    # ========================================================
-    # STATUS
-    # ========================================================
+   
 
     def is_complete(
         self,
@@ -377,6 +469,24 @@ class WorkflowExecutor:
     ) -> bool:
 
         return self.scheduler.has_failed_task(
+            state
+        )
+
+    def has_running_task(
+        self,
+        state: AgentState,
+    ) -> bool:
+
+        return self.scheduler.has_running_task(
+            state
+        )
+
+    def has_pending_tasks(
+        self,
+        state: AgentState,
+    ) -> bool:
+
+        return self.scheduler.has_pending_tasks(
             state
         )
 

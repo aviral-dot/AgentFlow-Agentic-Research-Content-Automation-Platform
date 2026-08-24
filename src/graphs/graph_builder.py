@@ -5,6 +5,7 @@ from langgraph.graph import END, START, StateGraph
 from src.executors.workflow_executor import WorkflowExecutor
 from src.nodes.blog_node import BlogNode
 from src.nodes.mail_node import EmailNode
+from src.nodes.research_node import ResearchNode
 from src.planners.workflow_planner import WorkflowPlanner
 from src.states.blogstate import AgentState
 from src.utils.loggers import get_logger, log_event
@@ -28,6 +29,13 @@ class GraphBuilder:
             AgentState
         )
 
+        # ====================================================
+        # WORKER NODES
+        # ====================================================
+
+        self.research_node = ResearchNode( llm 
+                                          )
+
         self.blog_node = BlogNode(
             llm
         )
@@ -36,39 +44,64 @@ class GraphBuilder:
             llm
         )
 
+        # ====================================================
+        # PLANNER / EXECUTOR
+        # ====================================================
+
         self.planner = WorkflowPlanner(
             llm
         )
 
         self.executor = WorkflowExecutor()
 
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="graph_builder_initialized",
+            architecture="planner_executor",
+            workers=[
+                "research",
+                "blog",
+                "email",
+            ],
+        )
+
     # ========================================================
-    # BUILD
+    # BUILD GRAPH
     # ========================================================
 
     def build_graph(self):
 
-        # ----------------------------------------------------
+        # ====================================================
         # PLANNER
-        # ----------------------------------------------------
+        # ====================================================
 
         self.graph.add_node(
             "planner",
             self.planner.plan,
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # EXECUTOR
-        # ----------------------------------------------------
+        # ====================================================
 
         self.graph.add_node(
             "executor",
             self.executor_node,
         )
 
-        # ----------------------------------------------------
+        # ====================================================
+        # RESEARCH
+        # ====================================================
+
+        self.graph.add_node(
+            "research",
+            self.research_node.research,
+        )
+
+        # ====================================================
         # BLOG
-        # ----------------------------------------------------
+        # ====================================================
 
         self.graph.add_node(
             "title_creation",
@@ -80,9 +113,9 @@ class GraphBuilder:
             self.blog_node.content_generation,
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # EMAIL
-        # ----------------------------------------------------
+        # ====================================================
 
         self.graph.add_node(
             "draft_email",
@@ -99,9 +132,9 @@ class GraphBuilder:
             self.email_node.send_email,
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # ADVANCE
-        # ----------------------------------------------------
+        # ====================================================
 
         self.graph.add_node(
             "advance",
@@ -109,7 +142,7 @@ class GraphBuilder:
         )
 
         # ====================================================
-        # GRAPH EDGES
+        # START → PLANNER
         # ====================================================
 
         self.graph.add_edge(
@@ -117,28 +150,42 @@ class GraphBuilder:
             "planner",
         )
 
+        # ====================================================
+        # PLANNER → EXECUTOR
+        # ====================================================
+
         self.graph.add_edge(
             "planner",
             "executor",
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # EXECUTOR → WORKER
-        # ----------------------------------------------------
+        # ====================================================
 
         self.graph.add_conditional_edges(
             "executor",
             self.route_task,
             {
+                "research": "research",
                 "blog": "title_creation",
                 "email": "draft_email",
                 "end": END,
             },
         )
 
-        # ----------------------------------------------------
+        # ====================================================
+        # RESEARCH
+        # ====================================================
+
+        self.graph.add_edge(
+            "research",
+            "advance",
+        )
+
+        # ====================================================
         # BLOG
-        # ----------------------------------------------------
+        # ====================================================
 
         self.graph.add_edge(
             "title_creation",
@@ -150,9 +197,9 @@ class GraphBuilder:
             "advance",
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # EMAIL
-        # ----------------------------------------------------
+        # ====================================================
 
         self.graph.add_edge(
             "draft_email",
@@ -173,9 +220,9 @@ class GraphBuilder:
             "advance",
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # ADVANCE → EXECUTOR
-        # ----------------------------------------------------
+        # ====================================================
 
         self.graph.add_edge(
             "advance",
@@ -197,43 +244,59 @@ class GraphBuilder:
             state
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # NO READY TASK
-        # ----------------------------------------------------
+        # ====================================================
 
         if task is None:
+
+            # ------------------------------------------------
+            # COMPLETE
+            # ------------------------------------------------
 
             if self.executor.is_complete(
                 state
             ):
 
+                workflow_results = (
+                    self.build_workflow_output(
+                        state
+                    )
+                )
+
                 return {
                     "current_task": None,
-                    "workflow_results": (
-                        self.build_workflow_output(
-                            state
-                        )
-                    ),
+                    "workflow_results": workflow_results,
                     "response": (
                         "Workflow completed successfully."
                     ),
                 }
 
+            # ------------------------------------------------
+            # FAILED
+            # ------------------------------------------------
+
             if self.executor.has_failed_task(
                 state
             ):
 
+                workflow_results = (
+                    self.build_workflow_output(
+                        state
+                    )
+                )
+
                 return {
                     "current_task": None,
-                    "workflow_results": (
-                        self.build_workflow_output(
-                            state
-                        )
-                    ),
+                    "workflow_results": workflow_results,
                     "response": (
                         "Workflow failed."
                     ),
                 }
+
+            # ------------------------------------------------
+            # DEADLOCK
+            # ------------------------------------------------
 
             if self.executor.is_deadlocked(
                 state
@@ -247,9 +310,9 @@ class GraphBuilder:
                 "current_task": None,
             }
 
-        # ----------------------------------------------------
-        # SELECT TASK
-        # ----------------------------------------------------
+        # ====================================================
+        # SELECT NEXT READY TASK
+        # ====================================================
 
         log_event(
             logger,
@@ -278,13 +341,35 @@ class GraphBuilder:
             state
         )
 
+        # ----------------------------------------------------
+        # NO CURRENT TASK
+        # ----------------------------------------------------
+
         if task is None:
             return "end"
 
+        # ----------------------------------------------------
+        # RESEARCH
+        # ----------------------------------------------------
+
+        if task.type == "research":
+
+            return "research"
+
+        # ----------------------------------------------------
+        # BLOG
+        # ----------------------------------------------------
+
         if task.type == "blog":
+
             return "blog"
 
+        # ----------------------------------------------------
+        # EMAIL
+        # ----------------------------------------------------
+
         if task.type == "email":
+
             return "email"
 
         raise ValueError(
@@ -292,7 +377,7 @@ class GraphBuilder:
         )
 
     # ========================================================
-    # ADVANCE
+    # ADVANCE NODE
     # ========================================================
 
     def advance_node(
@@ -307,9 +392,9 @@ class GraphBuilder:
         if task is None:
             return {}
 
-        # ----------------------------------------------------
+        # ====================================================
         # REJECTED EMAIL
-        # ----------------------------------------------------
+        # ====================================================
 
         if (
             task.type == "email"
@@ -324,7 +409,10 @@ class GraphBuilder:
             )
 
             updated_state = dict(state)
-            updated_state.update(updates)
+
+            updated_state.update(
+                updates
+            )
 
             updates["workflow_results"] = (
                 self.build_workflow_output(
@@ -340,11 +428,19 @@ class GraphBuilder:
                 }
             )
 
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="workflow_task_rejected",
+                task_id=task.id,
+                task_type=task.type,
+            )
+
             return updates
 
-        # ----------------------------------------------------
+        # ====================================================
         # NORMAL COMPLETION
-        # ----------------------------------------------------
+        # ====================================================
 
         result = state.get(
             "task_result"
@@ -353,8 +449,9 @@ class GraphBuilder:
         if result is None:
 
             raise RuntimeError(
-                f"Task '{task.id}' finished worker execution "
-                "without producing task_result."
+                f"Task '{task.id}' finished worker "
+                "execution without producing "
+                "task_result."
             )
 
         updates = (
@@ -366,7 +463,10 @@ class GraphBuilder:
         )
 
         updated_state = dict(state)
-        updated_state.update(updates)
+
+        updated_state.update(
+            updates
+        )
 
         updates["workflow_results"] = (
             self.build_workflow_output(
@@ -374,11 +474,31 @@ class GraphBuilder:
             )
         )
 
+        # ====================================================
+        # CLEAR TRANSIENT STATE
+        # ====================================================
+
         updates.update(
             {
                 "task_result": None,
                 "approval": None,
+                "current_task": None,
             }
+        )
+
+        # ----------------------------------------------------
+        # Clear worker artifacts only when appropriate.
+        #
+        # Keep research/blog/email in state because downstream
+        # tasks may need them.
+        # ----------------------------------------------------
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="workflow_task_completed",
+            task_id=task.id,
+            task_type=task.type,
         )
 
         return updates
@@ -397,9 +517,11 @@ class GraphBuilder:
         )
 
         if approval == "approve":
+
             return "send_email"
 
         if approval == "reject":
+
             return "reject"
 
         raise ValueError(
@@ -407,7 +529,7 @@ class GraphBuilder:
         )
 
     # ========================================================
-    # OUTPUT
+    # BUILD WORKFLOW OUTPUT
     # ========================================================
 
     def build_workflow_output(
@@ -432,6 +554,7 @@ class GraphBuilder:
                 "rejected",
                 "failed",
             }:
+
                 continue
 
             results.append(

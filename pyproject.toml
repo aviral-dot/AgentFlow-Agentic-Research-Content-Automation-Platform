@@ -28,6 +28,7 @@ dependencies = [
     "nemoguardrails>=0.23.0",
     "psycopg[binary]>=3.3.4",
     "streamlit>=1.62.0",
+    "tavily-python>=0.8.0",
     "uvicorn>=0.34.3",
     "watchdog>=6.0.0",
 ]
