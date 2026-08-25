@@ -216,7 +216,7 @@ Return JSON:
 
         else:
 
-            prompt = f"""
+           prompt = f"""
 You are an email assistant.
 
 Execute ONLY this email task:
@@ -225,13 +225,24 @@ Execute ONLY this email task:
 
 Determine:
 
-1. recipient
+1. to — the recipient's complete email address
 2. subject
-3. email body
+3. body
 
-Do not perform any other task.
+IMPORTANT:
+- The JSON field MUST be named "to".
+- NEVER use "recipient".
+- "to" must contain a complete valid email address.
+- Return exactly these three fields: "to", "subject", and "body".
+- Return JSON only.
 
-Return JSON only.
+Example:
+
+{{
+    "to": "rahul@example.com",
+    "subject": "School Tomorrow",
+    "body": "Please attend school early tomorrow."
+}}
 """
 
         started = perf_counter()

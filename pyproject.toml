@@ -20,6 +20,7 @@ dependencies = [
     "langchain-core>=0.3.65",
     "langchain-groq>=0.3.2",
     "langchain-litellm>=0.7.0",
+    "langchain-openai>=1.4.3",
     "langgraph>=0.4.8",
     "langgraph-checkpoint-postgres>=3.1.2",
     "langgraph-cli[inmem]>=0.3.1",
@@ -56,9 +57,13 @@ python_functions = ["test_*"]
 
 asyncio_mode = "auto"
 
-pythonpath = ["."]
+pythonpath = [".", "tests"]
 
 addopts = "-ra"
+
+markers = [
+    "evals: DeepEval evaluation tests",
+]
 
 [tool.mypy]
 exclude = '^evals/'
@@ -74,4 +79,3 @@ module = [
     "googleapiclient.*",
 ]
 ignore_missing_imports = true
-
