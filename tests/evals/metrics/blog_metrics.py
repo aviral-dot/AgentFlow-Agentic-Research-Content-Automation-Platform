@@ -4,7 +4,7 @@ from deepeval.metrics import AnswerRelevancyMetric, GEval
 from deepeval.models import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCaseParams
 from langchain_groq import ChatGroq
-from tests.evals.metrics.agent_metrics import eval_model
+from tests.evals.metrics.traj_metrics import eval_model
 
 
 

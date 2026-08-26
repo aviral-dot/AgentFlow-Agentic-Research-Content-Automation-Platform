@@ -1,7 +1,7 @@
 from deepeval.metrics import GEval
 from deepeval.test_case import LLMTestCaseParams
 
-from tests.evals.metrics.agent_metrics import eval_model
+from tests.evals.metrics.traj_metrics import eval_model
 
 
 email_quality = GEval(
