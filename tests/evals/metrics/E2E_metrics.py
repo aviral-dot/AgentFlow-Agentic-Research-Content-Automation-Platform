@@ -1,18 +1,21 @@
 import os
 
 from deepeval.metrics import (
-    PlanAdherenceMetric,
-    PlanQualityMetric,
-    StepEfficiencyMetric,
+    AnswerRelevancyMetric,
+    GEval,
     TaskCompletionMetric,
 )
 from deepeval.models import DeepEvalBaseLLM
+from deepeval.test_case import SingleTurnParams
 from langchain_openai import ChatOpenAI
 
 
 class OpenRouterEvalModel(DeepEvalBaseLLM):
+    """
+    LLM used by DeepEval as the evaluation judge.
+    """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.model = ChatOpenAI(
             model=os.getenv(
                 "DEEPEVAL_MODEL",
@@ -35,7 +38,7 @@ class OpenRouterEvalModel(DeepEvalBaseLLM):
         response = await self.model.ainvoke(prompt)
         return response.content
 
-    def get_model_name(self):
+    def get_model_name(self) -> str:
         return "OpenRouter Evaluation Model"
 
 
@@ -48,20 +51,37 @@ task_completion_metric = TaskCompletionMetric(
     include_reason=True,
 )
 
-step_efficiency_metric = StepEfficiencyMetric(
+
+answer_relevancy_metric = AnswerRelevancyMetric(
     threshold=0.80,
     model=eval_model,
     include_reason=True,
 )
 
-plan_quality_metric = PlanQualityMetric(
+
+blog_quality_metric = GEval(
+    name="Blog Quality",
+    criteria=(
+        "Evaluate the final response produced by the complete "
+        "AgentFlow workflow. Determine whether it fulfills "
+        "the user's request. The response should be relevant "
+        "to the requested topic, coherent, useful, well-written, "
+        "and satisfy explicit requirements in the user's request. "
+        "If the request asks for research-based blog content, "
+        "the response should appropriately reflect the requested "
+        "topic and produce a concise blog."
+    ),
+    evaluation_params=[
+       SingleTurnParams.INPUT,
+        SingleTurnParams.ACTUAL_OUTPUT,
+    ],
     threshold=0.80,
     model=eval_model,
-    include_reason=True,
 )
 
-plan_adherence_metric = PlanAdherenceMetric(
-    threshold=0.80,
-    model=eval_model,
-    include_reason=True,
-)
+
+agent_e2e_metrics = [
+    task_completion_metric,
+    answer_relevancy_metric,
+    blog_quality_metric,
+]

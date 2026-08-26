@@ -53,7 +53,9 @@ class EmailNode:
             )
         )
 
-   
+    # ========================================================
+    # CURRENT TASK
+    # ========================================================
 
     def get_current_task(
         self,
@@ -77,7 +79,9 @@ class EmailNode:
 
         return None
 
-    
+    # ========================================================
+    # BLOG DEPENDENCY
+    # ========================================================
 
     def get_blog_dependency(
         self,
@@ -108,11 +112,30 @@ class EmailNode:
             if dependency_task.type != "blog":
                 continue
 
-            blog = state.get(
-                "task_results",
-                {},
-            ).get(
-                dependency_id
+            # ------------------------------------------------
+            # Get the completed blog result.
+            #
+            # Preferred source:
+            #     state["task_results"]
+            #
+            # Fallback:
+            #     Task.result
+            #
+            # Final fallback:
+            #     state["blog"]
+            # ------------------------------------------------
+
+            blog = (
+                state.get(
+                    "task_results",
+                    {},
+                ).get(
+                    dependency_id
+                )
+                or dependency_task.result
+                or state.get(
+                    "blog"
+                )
             )
 
             if not blog:
@@ -121,32 +144,76 @@ class EmailNode:
                     "has no result."
                 )
 
+            # ------------------------------------------------
+            # Convert Pydantic Blog model to dictionary.
+            # ------------------------------------------------
+
+            if hasattr(
+                blog,
+                "model_dump",
+            ):
+
+                blog = blog.model_dump()
+
             if not isinstance(
                 blog,
                 dict,
             ):
+
                 raise ValueError(
-                    "Blog dependency result must be a dictionary."
+                    "Blog dependency result must be "
+                    "a dictionary."
                 )
 
-            if not blog.get("title"):
+            # ------------------------------------------------
+            # Validate blog artifact.
+            # ------------------------------------------------
+
+            title = str(
+                blog.get(
+                    "title",
+                    "",
+                )
+            ).strip()
+
+            content = str(
+                blog.get(
+                    "content",
+                    "",
+                )
+            ).strip()
+
+            if not title:
+
                 raise ValueError(
-                    "Blog result is missing title."
+                    f"Blog dependency '{dependency_id}' "
+                    "is missing title."
                 )
 
-            if not blog.get("content"):
+            if not content:
+
                 raise ValueError(
-                    "Blog result is missing content."
+                    f"Blog dependency '{dependency_id}' "
+                    "is missing content."
                 )
 
-            return blog
+            # ------------------------------------------------
+            # Return normalized blog artifact.
+            # ------------------------------------------------
+
+            return {
+                "title": title,
+                "content": content,
+            }
 
         raise ValueError(
             f"Email task '{current_task.id}' requires "
             "a blog dependency."
         )
 
-   
+    # ========================================================
+    # DRAFT EMAIL
+    # ========================================================
 
     async def draft_email(
         self,
@@ -162,11 +229,13 @@ class EmailNode:
         )
 
         if current_task is None:
+
             raise ValueError(
                 "No current email task exists."
             )
 
         if current_task.type != "email":
+
             raise ValueError(
                 "Current task is not an email task."
             )
@@ -176,7 +245,9 @@ class EmailNode:
             current_task,
         )
 
-       
+        # ====================================================
+        # EMAIL USING BLOG DEPENDENCY
+        # ====================================================
 
         if blog is not None:
 
@@ -212,11 +283,13 @@ Return JSON:
 }}
 """
 
-        
+        # ====================================================
+        # NORMAL EMAIL WITHOUT BLOG
+        # ====================================================
 
         else:
 
-           prompt = f"""
+            prompt = f"""
 You are an email assistant.
 
 Execute ONLY this email task:
@@ -261,7 +334,9 @@ Example:
 
             raise
 
-      
+        # ====================================================
+        # CONSTRUCT FINAL EMAIL BODY
+        # ====================================================
 
         if blog is not None:
 
@@ -275,13 +350,19 @@ Example:
             body = draft.body
 
         email = {
-            "to": str(draft.to),
+            "to": str(
+                draft.to
+            ),
             "subject": draft.subject,
             "body": body,
         }
 
         latency_ms = round(
-            (perf_counter() - started) * 1000,
+            (
+                perf_counter()
+                - started
+            )
+            * 1000,
             2,
         )
 
@@ -298,6 +379,9 @@ Example:
             "email": email,
         }
 
+    # ========================================================
+    # HUMAN APPROVAL
+    # ========================================================
 
     def approve_email(
         self,
@@ -309,6 +393,7 @@ Example:
         )
 
         if not email:
+
             raise ValueError(
                 "Email draft is missing."
             )
@@ -342,7 +427,9 @@ Example:
 
             decision = decision.get(
                 "decision",
-                decision.get("approval"),
+                decision.get(
+                    "approval"
+                ),
             )
 
         if decision not in {
@@ -358,8 +445,9 @@ Example:
             "approval": decision,
         }
 
-
-    
+    # ========================================================
+    # SEND EMAIL
+    # ========================================================
 
     async def send_email(
         self,
@@ -371,6 +459,7 @@ Example:
         )
 
         if not email_data:
+
             raise ValueError(
                 "Email draft is missing."
             )
@@ -380,7 +469,9 @@ Example:
         )
 
         result = await self.email_tool.send(
-            to=str(email.to),
+            to=str(
+                email.to
+            ),
             subject=email.subject,
             body=email.body,
         )
@@ -388,7 +479,9 @@ Example:
         email_result = {
             "status": "sent",
             "message": "Email Sent Successfully",
-            "to": str(email.to),
+            "to": str(
+                email.to
+            ),
             "subject": email.subject,
             "body": email.body,
             "tool_result": result,
