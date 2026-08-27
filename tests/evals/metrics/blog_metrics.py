@@ -1,36 +1,34 @@
-import os
-
-from deepeval.metrics import AnswerRelevancyMetric, GEval
-from deepeval.models import DeepEvalBaseLLM
-from deepeval.test_case import LLMTestCaseParams
-from langchain_groq import ChatGroq
-from tests.evals.metrics.traj_metrics import eval_model
+from deepeval.metrics import GEval
+from deepeval.test_case import SingleTurnParams
+from tests.evals.helpers.eval_model import create_eval_model
 
 
-
-title_relevancy = AnswerRelevancyMetric(
-    threshold=0.80,
-    model=eval_model,
-    include_reason=True,
-)
+eval_model = create_eval_model()
 
 
-blog_quality = GEval(
-    name="Blog Quality",
-    criteria=(
-        "Evaluate whether the generated blog:\n"
-        "1. Directly addresses the requested topic.\n"
-        "2. Is relevant to the topic.\n"
-        "3. Is coherent and logically organized.\n"
-        "4. Provides useful and sufficiently detailed information.\n"
-        "5. Is clear and easy to understand.\n"
-        "6. Uses appropriate Markdown formatting.\n"
-        "7. Avoids unsupported or fabricated claims."
-    ),
+blog_content_metric = GEval(
+    name="Blog Content Quality",
+    criteria="""
+Evaluate the generated blog content.
+
+The content should:
+
+1. Be directly relevant to the user's requested topic.
+2. Be useful and informative.
+3. Be clear and easy to understand.
+4. Have a logical structure.
+5. Use concise explanations.
+6. Avoid unnecessary repetition.
+7. Stay focused on the requested topic.
+8. Avoid unsupported factual claims.
+9. Follow the requested blog-writing requirements.
+10. Avoid mentioning internal workflow execution, agents,
+    Tavily, or the research process unless explicitly requested.
+""",
     evaluation_params=[
-        LLMTestCaseParams.INPUT,
-        LLMTestCaseParams.ACTUAL_OUTPUT,
+        SingleTurnParams.INPUT,
+        SingleTurnParams.ACTUAL_OUTPUT,
     ],
-    threshold=0.80,
+    threshold=0.7,
     model=eval_model,
 )

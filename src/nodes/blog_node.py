@@ -3,7 +3,7 @@
 import logging
 from time import perf_counter
 
-from src.states.blogstate import AgentState
+from src.states.blogstate import AgentState, Blog
 from src.utils.loggers import (
     get_logger,
     log_event,
@@ -21,14 +21,22 @@ class BlogNode:
 
         self.llm = llm
 
+        # One structured LLM call will now generate
+        # both the blog title and the blog content.
+        self.structured_llm = (
+            llm.with_structured_output(
+                Blog,
+                method="json_mode",
+            )
+        )
+
         log_event(
             logger,
             level=logging.INFO,
             event="blog_node_initialized",
         )
 
-
-   
+  
 
     def _get_blog_description(
         self,
@@ -62,8 +70,7 @@ class BlogNode:
 
         return ""
 
-
-    
+  
 
     def _get_research_context(
         self,
@@ -78,10 +85,6 @@ class BlogNode:
 
             return ""
 
-
-
-       
-
         if hasattr(
             research,
             "model_dump",
@@ -89,9 +92,6 @@ class BlogNode:
 
             research_data = research.model_dump()
 
-
-
-       
         elif isinstance(
             research,
             dict,
@@ -165,11 +165,9 @@ class BlogNode:
             context_parts
         )
 
-    
+   
 
-
-
-    async def title_creation(
+    async def generate_blog(
         self,
         state: AgentState,
     ):
@@ -193,7 +191,6 @@ class BlogNode:
                 state
             )
         )
-
 
        
 
@@ -202,185 +199,35 @@ class BlogNode:
             prompt = f"""
 You are a professional blog writer.
 
-Create a concise, professional and SEO-friendly
-title for the requested blog.
+Create a complete, concise, useful, professional,
+and SEO-friendly blog post for the user's request.
 
 Blog request:
 {description}
 
-Use the following research as factual context:
+Use the following research as the primary factual
+context for the blog:
 
 {research_context}
 
-Requirements:
+Return BOTH:
+1. A concise and compelling blog title.
+2. The complete blog content.
 
-- Make the title relevant to the user's request.
-- Use the research to understand the topic.
-- Keep the title concise.
-- Do not invent facts.
+Requirements for the title:
+
+- Make it relevant to the user's request.
+- Make it professional and SEO-friendly.
+- Keep it concise.
 - Do not mention research.
 - Do not mention AI.
 - Do not mention agents.
-- Return ONLY the title.
-"""
+- Do not invent facts.
 
-        else:
-
-            prompt = f"""
-You are a professional blog writer.
-
-Create a concise, professional and SEO-friendly
-title for this blog request:
-
-{description}
-
-Requirements:
-
-- Keep the title concise.
-- Make it relevant to the user's request.
-- Do not mention AI.
-- Do not mention agents.
-- Return ONLY the title.
-"""
-
-        started = perf_counter()
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            request_id=request_id,
-            event="blog_title_generation_started",
-            research_used=bool(
-                research_context
-            ),
-        )
-
-        try:
-
-            response = await self.llm.ainvoke(
-                prompt
-            )
-
-        except Exception:
-
-            logger.exception(
-                "Blog title generation failed"
-            )
-
-            raise
-
-        latency_ms = round(
-            (
-                perf_counter()
-                - started
-            )
-            * 1000,
-            2,
-        )
-
-        title = response.content.strip()
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            request_id=request_id,
-            event="blog_title_generation_completed",
-            latency_ms=latency_ms,
-            research_used=bool(
-                research_context
-            ),
-        )
-
-
-        
-
-        blog = dict(
-            state.get("blog") or {}
-        )
-
-        blog["title"] = title
-
-        return {
-            "blog": blog,
-        }
-
-  
-
-
-
-    async def content_generation(
-        self,
-        state: AgentState,
-    ):
-
-        request_id = state.get(
-            "request_id"
-        )
-
-        description = self._get_blog_description(
-            state
-        )
-
-        if not description:
-
-            raise ValueError(
-                "Blog description is missing."
-            )
-
-
-
-        
-
-        blog = state.get(
-            "blog"
-        ) or {}
-
-        title = blog.get(
-            "title",
-            "",
-        )
-
-        if not title:
-
-            raise ValueError(
-                "Blog title is missing before "
-                "content generation."
-            )
-
-
-        
-
-        research_context = (
-            self._get_research_context(
-                state
-            )
-        )
-
-
-        
-
-        if research_context:
-
-            prompt = f"""
-You are a professional blog writer.
-
-Write a BRIEF, useful and factually grounded blog.
-
-Blog request:
-{description}
-
-Title:
-{title}
-
-Use the following research as the primary
-factual context:
-
-{research_context}
-
-Requirements:
+Requirements for the blog content:
 
 - 250-500 words maximum.
-- Keep it concise.
+- Keep it concise and useful.
 - Use Markdown.
 - Use a clear introduction.
 - Cover the most important points only.
@@ -394,28 +241,42 @@ Requirements:
 - Do not mention agents.
 - Do not mention workflow execution.
 
-Return only the blog content.
+Generate the title and content together as one
+complete blog artifact.
+
+Return the result as JSON with exactly these fields:
+- "title"
+- "content"
 """
 
-       
+      
 
         else:
 
             prompt = f"""
 You are a professional blog writer.
 
-Write a BRIEF but useful blog.
+Create a complete, concise, useful, professional,
+and SEO-friendly blog post for this request:
 
-Blog request:
 {description}
 
-Title:
-{title}
+Return BOTH:
+1. A concise and compelling blog title.
+2. The complete blog content.
 
-Requirements:
+Requirements for the title:
+
+- Keep the title concise.
+- Make it relevant to the user's request.
+- Make it professional and SEO-friendly.
+- Do not mention AI.
+- Do not mention agents.
+
+Requirements for the blog content:
 
 - 250-500 words maximum.
-- Keep it concise.
+- Keep it concise and useful.
 - Use Markdown.
 - Use a clear introduction.
 - Cover the most important points only.
@@ -425,8 +286,15 @@ Requirements:
 - Do not mention agents.
 - Do not mention workflow execution.
 
-Return only the blog content.
+Generate the title and content together as one
+complete blog artifact.
+
+Return the result as JSON with exactly these fields:
+- "title"
+- "content"
 """
+
+      
 
         started = perf_counter()
 
@@ -434,7 +302,7 @@ Return only the blog content.
             logger,
             level=logging.INFO,
             request_id=request_id,
-            event="blog_content_generation_started",
+            event="blog_generation_started",
             research_used=bool(
                 research_context
             ),
@@ -442,14 +310,14 @@ Return only the blog content.
 
         try:
 
-            response = await self.llm.ainvoke(
+            blog = await self.structured_llm.ainvoke(
                 prompt
             )
 
         except Exception:
 
             logger.exception(
-                "Blog content generation failed"
+                "Blog generation failed"
             )
 
             raise
@@ -463,27 +331,47 @@ Return only the blog content.
             2,
         )
 
-        content = response.content.strip()
+       
 
-        
+        if not isinstance(
+            blog,
+            Blog,
+        ):
 
-        blog_result = {
-            "title": title,
-            "content": content,
-        }
+            try:
+
+                blog = Blog.model_validate(
+                    blog
+                )
+
+            except Exception:
+
+                logger.exception(
+                    "Invalid structured blog result"
+                )
+
+                raise ValueError(
+                    "LLM returned an invalid blog result."
+                )
+
+        # Convert to dictionary so the existing
+        # executor/state/email dependency logic
+        # remains compatible.
+        blog_result = blog.model_dump()
+
+       
 
         log_event(
             logger,
             level=logging.INFO,
             request_id=request_id,
-            event="blog_content_generation_completed",
+            event="blog_generation_completed",
             latency_ms=latency_ms,
             research_used=bool(
                 research_context
             ),
         )
 
-        
 
         return {
             "blog": blog_result,

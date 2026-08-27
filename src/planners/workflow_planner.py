@@ -4,16 +4,10 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from src.states.blogstate import AgentState, Task
-from src.utils.loggers import (
-    get_logger,
-    log_event,
-)
+from src.utils.loggers import get_logger, log_event
 
 
 logger = get_logger(__name__)
-
-
-
 
 
 class PlannedTask(BaseModel):
@@ -21,63 +15,53 @@ class PlannedTask(BaseModel):
     Structured task produced by the workflow planner.
 
     Supported task types:
-
         research
         blog
         email
     """
 
-    id: str = Field(
-        ...,
-        min_length=1,
-        description="Unique task identifier such as task_1.",
-    )
+    id: str = Field(..., min_length=1)
+    type: Literal["research", "blog", "email"]
+    description: str = Field(..., min_length=1, max_length=200)
+    depends_on: list[str]
+    use_blog: bool
 
-    type: Literal[
-        "research",
-        "blog",
-        "email",
-    ] = Field(
-        ...,
-        description=(
-            "Worker responsible for executing the task."
-        ),
-    )
+    # id: str = Field(
+    #     ...,
+    #     min_length=1,
+    #     description="Unique task identifier such as task_1.",
+    # )
 
-    description: str = Field(
-        ...,
-        min_length=1,
-        description=(
-            "Specific action performed by the task."
-        ),
-    )
+    # type: Literal[
+    #     "research",
+    #     "blog",
+    #     "email",
+    # ] = Field(
+    #     ...,
+    #     description="Worker responsible for executing the task.",
+    # )
 
-    # IMPORTANT:
-    # Do NOT use default_factory here.
-    # Groq structured output requires this field
-    # to be present in the JSON schema "required" list.
-    depends_on: list[str] = Field(
-        ...,
-        description=(
-            "Task IDs that must complete before "
-            "this task can execute. Use [] when "
-            "there are no dependencies."
-        ),
-    )
+    # description: str = Field(
+    #     ...,
+    #     min_length=1,
+    #     description="Specific action performed by the task.",
+    # )
 
-    # IMPORTANT:
-    # Do NOT use a default here.
-    # The planner must explicitly return true/false.
-    use_blog: bool = Field(
-        ...,
-        description=(
-            "True only when an email task consumes "
-            "the output of a blog task. Otherwise false."
-        ),
-    )
+    # depends_on: list[str] = Field(
+    #     ...,
+    #     description=(
+    #         "Task IDs that must complete before this task. "
+    #         "Use [] when there are no dependencies."
+    #     ),
+    # )
 
-
-
+    # use_blog: bool = Field(
+    #     ...,
+    #     description=(
+    #         "True only when an email task consumes the output "
+    #         "of a blog task. Otherwise false."
+    #     ),
+    # )
 
 
 class WorkflowPlan(BaseModel):
@@ -92,22 +76,16 @@ class WorkflowPlan(BaseModel):
     )
 
 
-
-
-
 class WorkflowPlanner:
 
     def __init__(
         self,
         llm,
     ):
-
         self.llm = llm
 
-        self.structured_llm = (
-            llm.with_structured_output(
-                WorkflowPlan
-            )
+        self.structured_llm = llm.with_structured_output(
+            WorkflowPlan
         )
 
         log_event(
@@ -115,8 +93,6 @@ class WorkflowPlanner:
             level=logging.INFO,
             event="workflow_planner_initialized",
         )
-
-   
 
     def validate_plan(
         self,
@@ -127,74 +103,60 @@ class WorkflowPlanner:
 
         Supported dependency patterns:
 
-            research
-                ↓
-              blog
-                ↓
-              email
+            research → blog → email
 
         Also supported:
 
             blog → email
 
-        and independent tasks.
+            research → blog
+
+            independent research
+
+            independent blog
+
+            independent email
+
+            research + independent email
         """
 
-       
-
         if not tasks:
-
             raise ValueError(
                 "Planner returned an empty workflow."
             )
 
-        
+       
 
         task_ids = [
             task.id.strip()
             for task in tasks
         ]
 
-
-       
-
         if len(set(task_ids)) != len(task_ids):
-
             raise ValueError(
                 "Planner produced duplicate task IDs."
             )
-
-        
 
         task_map = {
             task.id.strip(): task
             for task in tasks
         }
 
-        
+      
 
         for task in tasks:
 
             task_id = task.id.strip()
 
-           
-
             if not task_id:
-
                 raise ValueError(
                     "Planner produced an empty task ID."
                 )
 
-            
-
             if not task.description.strip():
-
                 raise ValueError(
-                    f"Task '{task_id}' has an empty "
-                    "description."
+                    f"Task '{task_id}' has an empty description."
                 )
-
-            
 
             dependency_ids = [
                 dependency_id.strip()
@@ -204,47 +166,40 @@ class WorkflowPlanner:
            
 
             if task_id in dependency_ids:
-
                 raise ValueError(
-                    f"Task '{task_id}' cannot depend "
-                    "on itself."
+                    f"Task '{task_id}' cannot depend on itself."
                 )
 
-           
+         
 
             for dependency_id in dependency_ids:
 
                 if dependency_id not in task_map:
-
                     raise ValueError(
                         f"Task '{task_id}' depends on "
                         f"unknown task '{dependency_id}'."
                     )
 
-            
+         
 
             if task.type == "research":
 
                 if task.use_blog:
-
                     raise ValueError(
                         f"Research task '{task_id}' "
                         "cannot have use_blog=True."
                     )
 
                 if dependency_ids:
-
                     raise ValueError(
                         f"Research task '{task_id}' "
                         "cannot depend on another task."
                     )
 
-           
-
+          
             elif task.type == "blog":
 
                 if task.use_blog:
-
                     raise ValueError(
                         f"Blog task '{task_id}' "
                         "cannot have use_blog=True."
@@ -257,14 +212,12 @@ class WorkflowPlanner:
                     ]
 
                     if dependency_task.type != "research":
-
                         raise ValueError(
                             f"Blog task '{task_id}' "
-                            "can only depend on "
-                            "research tasks."
+                            "can only depend on research tasks."
                         )
 
-           
+        
 
             elif task.type == "email":
 
@@ -284,48 +237,36 @@ class WorkflowPlanner:
                     ].type == "research"
                 ]
 
-              
-
+                # Email consuming generated blog
                 if task.use_blog:
 
                     if not blog_dependencies:
-
                         raise ValueError(
                             f"Email task '{task_id}' "
-                            "has use_blog=True but does "
-                            "not depend on a blog task."
+                            "has use_blog=True but does not "
+                            "depend on a blog task."
                         )
 
-               
-
+                # Independent email
                 else:
 
                     if blog_dependencies:
-
                         raise ValueError(
                             f"Email task '{task_id}' "
-                            "has use_blog=False but "
-                            "depends on a blog task."
+                            "has use_blog=False but depends "
+                            "on a blog task."
                         )
 
                     if research_dependencies:
-
                         raise ValueError(
                             f"Email task '{task_id}' "
-                            "cannot directly depend "
-                            "on research."
+                            "cannot directly depend on research."
                         )
 
-            
-
             else:
-
                 raise ValueError(
-                    f"Unsupported task type "
-                    f"'{task.type}'."
+                    f"Unsupported task type '{task.type}'."
                 )
-
-   
 
     def validate_no_cycles(
         self,
@@ -351,44 +292,27 @@ class WorkflowPlanner:
         ) -> None:
 
             if task_id in visiting:
-
                 raise ValueError(
                     "Circular dependency detected "
                     f"around task '{task_id}'."
                 )
 
             if task_id in visited:
-
                 return
 
-            visiting.add(
-                task_id
-            )
+            visiting.add(task_id)
 
             for dependency_id in dependency_graph.get(
                 task_id,
                 [],
             ):
+                visit(dependency_id)
 
-                visit(
-                    dependency_id
-                )
-
-            visiting.remove(
-                task_id
-            )
-
-            visited.add(
-                task_id
-            )
+            visiting.remove(task_id)
+            visited.add(task_id)
 
         for task_id in dependency_graph:
-
-            visit(
-                task_id
-            )
-
-   
+            visit(task_id)
 
     async def plan(
         self,
@@ -399,417 +323,60 @@ class WorkflowPlanner:
         an executable dependency graph.
         """
 
-       
-        query = state.get(
-            "query"
-        )
+        query = state.get("query")
 
         if not query:
-
             raise ValueError(
                 "Cannot create workflow plan because "
                 "query is missing."
             )
 
-        
+       
 
         prompt = f"""
-You are a strict workflow planner.
 
-Convert the user's request into the SMALLEST executable
-dependency graph.
+You are a workflow planner.
 
-You MUST NOT execute any task.
+Create the smallest executable workflow for the user's request.
 
-You ONLY create the workflow plan.
+Allowed task types:
+research, blog, email
 
-============================================================
-SUPPORTED TASK TYPES
-============================================================
+Rules:
+1. IDs must be task_1, task_2, ... in order.
+2. Research: depends_on=[], use_blog=false.
+3. Blog: may depend only on research; use_blog=false.
+4. Independent email: depends_on=[], use_blog=false.
+5. Email sending a generated blog: depends_on=[blog task ID], use_blog=true.
+6. Email cannot depend directly on research.
+7. Do not create unnecessary tasks.
+8. Keep independent actions independent.
+9. Keep task descriptions concise.
 
-Only these task types are allowed:
+Examples:
 
-1. research
-2. blog
-3. email
+Research + blog:
+research(task_1) -> []
+blog(task_2) -> ["task_1"]
 
-Every task MUST contain ALL of these fields:
+Blog + email:
+blog(task_1) -> []
+email(task_2) -> ["task_1"], use_blog=true
 
-- id
-- type
-- description
-- depends_on
-- use_blog
+User request:
 
-IMPORTANT:
-
-You MUST explicitly provide:
-
-- depends_on as [] when the task has no dependencies
-- use_blog as false when the task does not consume a blog
-
-Never omit either field.
-
-============================================================
-RESEARCH TASK
-============================================================
-
-A research task gathers external information using
-the research worker.
-
-Example:
-
-"Research NVIDIA's latest AI developments."
-
-Create:
-
-task_1:
-    id = "task_1"
-    type = "research"
-    description = "Research NVIDIA's latest AI developments"
-    depends_on = []
-    use_blog = false
-
-Research tasks MUST:
-
-- have depends_on = []
-- have use_blog = false
-- be root tasks
-
-============================================================
-BLOG TASK
-============================================================
-
-A blog task generates a professional blog.
-
-A blog MAY consume research.
-
-Example:
-
-"Research NVIDIA and write a blog about it."
-
-Create:
-
-task_1:
-    id = "task_1"
-    type = "research"
-    description = "Research NVIDIA"
-    depends_on = []
-    use_blog = false
-
-task_2:
-    id = "task_2"
-    type = "blog"
-    description = "Write a blog about NVIDIA using the research"
-    depends_on = ["task_1"]
-    use_blog = false
-
-If the user only asks for a blog:
-
-"Write a brief blog about NVIDIA."
-
-Create:
-
-task_1:
-    id = "task_1"
-    type = "blog"
-    description = "Write a brief blog about NVIDIA"
-    depends_on = []
-    use_blog = false
-
-Default blog length:
-
-250-500 words.
-
-If the user explicitly requests another length,
-follow the requested length.
-
-============================================================
-EMAIL TASK
-============================================================
-
-There are two supported email scenarios.
-
-------------------------------------------------------------
-SCENARIO A — INDEPENDENT EMAIL
-------------------------------------------------------------
-
-Example:
-
-"Email Rahul telling him to attend school early."
-
-Create:
-
-task_1:
-    id = "task_1"
-    type = "email"
-    description = "Email Rahul telling him to attend school early"
-    depends_on = []
-    use_blog = false
-
-Independent emails MUST:
-
-- have depends_on = []
-- have use_blog = false
-
-------------------------------------------------------------
-SCENARIO B — EMAIL GENERATED BLOG
-------------------------------------------------------------
-
-Example:
-
-"Generate a blog about NVIDIA and email the blog to Rahul."
-
-Create:
-
-task_1:
-    id = "task_1"
-    type = "blog"
-    description = "Generate a blog about NVIDIA"
-    depends_on = []
-    use_blog = false
-
-task_2:
-    id = "task_2"
-    type = "email"
-    description = "Email the generated blog to Rahul"
-    depends_on = ["task_1"]
-    use_blog = true
-
-The email MUST wait for the blog to complete.
-
-============================================================
-RESEARCH → BLOG → EMAIL
-============================================================
-
-If the user asks:
-
-"Research NVIDIA's latest AI developments, write a blog
-based on the research, and email the generated blog to Rahul."
-
-Create EXACTLY:
-
-task_1:
-    id = "task_1"
-    type = "research"
-    description = "Research NVIDIA's latest AI developments"
-    depends_on = []
-    use_blog = false
-
-task_2:
-    id = "task_2"
-    type = "blog"
-    description = "Write a blog using the NVIDIA research"
-    depends_on = ["task_1"]
-    use_blog = false
-
-task_3:
-    id = "task_3"
-    type = "email"
-    description = "Email the generated blog to Rahul"
-    depends_on = ["task_2"]
-    use_blog = true
-
-Dependency graph:
-
-task_1 → task_2 → task_3
-
-============================================================
-RESEARCH → BLOG
-============================================================
-
-Example:
-
-"Research NVIDIA and write a blog about it."
-
-Create:
-
-task_1 → research
-
-task_2 → blog
-
-Dependency:
-
-task_2 depends_on ["task_1"]
-
-============================================================
-BLOG → EMAIL
-============================================================
-
-Example:
-
-"Generate a blog about AI agents and email it to Rahul."
-
-Create:
-
-task_1 → blog
-
-task_2 → email
-
-Dependency:
-
-task_2 depends_on ["task_1"]
-
-use_blog = true
-
-============================================================
-RESEARCH + INDEPENDENT EMAIL
-============================================================
-
-Example:
-
-"Research NVIDIA and email Rahul telling him to attend
-school early."
-
-These are independent actions.
-
-Create:
-
-task_1:
-    id = "task_1"
-    type = "research"
-    description = "Research NVIDIA"
-    depends_on = []
-    use_blog = false
-
-task_2:
-    id = "task_2"
-    type = "email"
-    description = "Email Rahul telling him to attend school early"
-    depends_on = []
-    use_blog = false
-
-IMPORTANT:
-
-Do NOT make task_2 depend on task_1.
-
-============================================================
-RESEARCH → BLOG + INDEPENDENT EMAIL
-============================================================
-
-Example:
-
-"Research NVIDIA and write a blog about it, while emailing
-Rahul telling him to attend school early."
-
-Create:
-
-task_1:
-    id = "task_1"
-    type = "research"
-    description = "Research NVIDIA"
-    depends_on = []
-    use_blog = false
-
-task_2:
-    id = "task_2"
-    type = "blog"
-    description = "Write a blog using the NVIDIA research"
-    depends_on = ["task_1"]
-    use_blog = false
-
-task_3:
-    id = "task_3"
-    type = "email"
-    description = "Email Rahul telling him to attend school early"
-    depends_on = []
-    use_blog = false
-
-The email remains independent.
-
-============================================================
-DEPENDENCY RULES
-============================================================
-
-1. Every dependency must reference an existing task.
-
-2. Never create self-dependencies.
-
-3. Never create circular dependencies.
-
-4. Research cannot depend on another task.
-
-5. Blog may depend only on research.
-
-6. Email may depend on blog only when it consumes
-   the generated blog.
-
-7. Independent emails must have no dependencies.
-
-8. Email MUST NOT directly depend on research.
-
-9. Never create a dependency merely because two
-   tasks appear in the same user request.
-
-10. Independent actions must remain independent.
-
-11. Do not create unnecessary tasks.
-
-12. Do not combine multiple actions into one task.
-
-13. Each task description must describe ONLY the
-    action belonging to that task.
-
-============================================================
-TASK DESCRIPTION RULES
-============================================================
-
-GOOD:
-
-"Research NVIDIA's latest AI developments"
-
-"Write a blog using the NVIDIA research"
-
-"Email the generated blog to Rahul"
-
-"Email Rahul telling him to attend school early"
-
-BAD:
-
-"Research NVIDIA and write a blog and email Rahul"
-
-Do NOT combine multiple actions into one task.
-
-============================================================
-TASK ORDER
-============================================================
-
-Use deterministic task IDs:
-
-task_1
-task_2
-task_3
-
-Dependencies should reflect logical execution order.
-
-============================================================
-OUTPUT RULE
-============================================================
-
-Return ONLY the structured WorkflowPlan.
-
-Do not return:
-
-- explanations
-- markdown
-- commentary
-- natural-language text
-
-============================================================
-USER REQUEST
-============================================================
+User request:
 
 {query}
 """
 
-        
+       
 
         result = await self.structured_llm.ainvoke(
             prompt
         )
 
-       
-
+        
         self.validate_plan(
             result.tasks
         )
@@ -818,7 +385,8 @@ USER REQUEST
             result.tasks
         )
 
-        
+      
+
         runtime_tasks: list[Task] = []
 
         for planned_task in result.tasks:
@@ -847,8 +415,7 @@ USER REQUEST
                 )
             )
 
-    
-
+     
         log_event(
             logger,
             level=logging.INFO,
@@ -865,7 +432,7 @@ USER REQUEST
             ],
         )
 
-       
+      
 
         return {
             "tasks": runtime_tasks,

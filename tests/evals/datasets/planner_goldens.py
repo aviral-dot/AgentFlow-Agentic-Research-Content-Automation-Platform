@@ -1,40 +1,49 @@
+# mypy: ignore-errors
+
 from deepeval.dataset import EvaluationDataset, Golden
 
 
 dataset = EvaluationDataset(
     goldens=[
-        Golden(
-            input="Write a blog about LangGraph."
-        ),
-        Golden(
-            input="Email Rahul telling him to attend school early."
-        ),
-        Golden(
-            input="Research NVIDIA and write a blog about it."
-        ),
+      
         Golden(
             input=(
-                "Generate a blog about AI agents and "
-                "email the blog to Rahul."
+                          "Research NVIDIA's latest AI developments, "
+                                          "write a blog about them, and email the blog "
+                                          "to rrrttzch@gmail.com."
+                        )
+            
+        ),
+
+    
+        Golden(
+            input=(
+                "Research the benefits of cloud computing "
+                "and write a blog about it."
             )
         ),
+
+       
+
+        Golden(
+            input="Write a blog about the benefits of artificial intelligence."
+        ),
+
+     
         Golden(
             input=(
-                "Research NVIDIA, write a blog based on "
-                "the research, and email the generated "
-                "blog to Rahul."
+                "Send an email to rrrttzch@gmail.com "
+                "reminding them about tomorrow's meeting."
             )
         ),
+
+       
+
         Golden(
             input=(
-                "Research NVIDIA and email Rahul telling "
-                "him to attend school early."
-            )
-        ),
-        Golden(
-            input=(
-                "Research NVIDIA and write a blog about it "
-                "while emailing Rahul separately."
+                "Research NVIDIA's latest AI developments, "
+                "write a blog about them, and email the blog "
+                "to rrrttzch@gmail.com."
             )
         ),
     ]
