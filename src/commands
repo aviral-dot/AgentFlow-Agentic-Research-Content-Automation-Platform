@@ -1,3 +1,14 @@
-# uv run deepeval test run tests/evals/component_eval/test_agentflow_trajectory.py::test_agentflow_e2e -v -s
+# uv run deepeval test run tests/evals/trajectory_evals/test_agent_trajectory.py::test_agentflow_e2e -v -s    
 
 # uv run deepeval test run tests/evals/component_eval/test_agentflow_e2e.py::test_agentflow_e2e -v -s
+
+# uv run deepeval test run "tests/evals/component_eval/test_blog_eval.py::test_blog_component[golden0]" -v
+
+# uv run deepeval test run "tests/evals/component_eval/test_blog_eval.py::test_blog_component[golden0]" -v
+
+
+# $env:DEEPEVAL_MODEL="groq/qwen/qwen3.8-27b"
+
+# uv run deepeval test run "tests/evals/component_eval/test_email_eval.py::test_email_component[golden0]" -v
+
+#  uv run deepeval test run "tests/evals/component_eval/test_planner_eval.py::test_planner_component[golden0]" -v -s
