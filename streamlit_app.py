@@ -42,7 +42,11 @@ st.markdown(
 )
 
 
+if "access_token" not in st.session_state:
+    st.session_state.access_token = None
 
+if "user" not in st.session_state:
+    st.session_state.user = None
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -57,6 +61,60 @@ if "workflow" not in st.session_state:
     st.session_state.workflow = None
 
 
+def login_user(
+    email: str,
+    password: str,
+) -> bool:
+
+    try:
+        response = requests.post(
+            f"{FASTAPI_URL}/auth/login",
+            json={
+                "email": email,
+                "password": password,
+            },
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+
+            st.session_state.access_token = result[
+                "access_token"
+            ]
+
+            st.session_state.user = result[
+                "user"
+            ]
+
+            return True
+
+        if response.status_code == 401:
+            st.error(
+                "❌ Invalid email or password."
+            )
+
+        else:
+            try:
+                detail = response.json().get(
+                    "detail",
+                    "Login failed.",
+                )
+            except ValueError:
+                detail = "Login failed."
+
+            st.error(
+                f"❌ {detail}"
+            )
+
+        return False
+
+    except requests.exceptions.RequestException as exc:
+        st.error(
+            f"❌ Unable to connect to the backend: {exc}"
+        )
+
+        return False
 
 
 def check_backend() -> bool:
@@ -84,13 +142,26 @@ def send_message(
     try:
 
         response = requests.post(
-            f"{FASTAPI_URL}/chat",
-            json={
-                "query": query,
-                "thread_id": st.session_state.thread_id,
-            },
-            timeout=180,
-        )
+    f"{FASTAPI_URL}/chat",
+    headers={
+        "Authorization": (
+            f"Bearer {st.session_state.access_token}"
+        ),
+    },
+    json={
+        "query": query,
+        "thread_id": st.session_state.thread_id,
+    },
+    timeout=180,
+)
+ 
+        if response.status_code == 401:
+         st.session_state.access_token = None
+         st.session_state.user = None
+         st.session_state.messages = []
+         st.session_state.pending_approval = None
+         st.session_state.workflow = None
+         st.rerun()
 
         response.raise_for_status()
 
@@ -524,7 +595,61 @@ def display_workflow(
                 st.divider()
 
 
+if not st.session_state.access_token:
 
+    st.title("🔐 AgentFlow AI")
+
+    st.markdown(
+        "### Login"
+    )
+
+    st.caption(
+        "Sign in to access your AgentFlow workspace."
+    )
+
+    with st.form("login_form"):
+
+        email = st.text_input(
+            "Email",
+            placeholder="you@example.com",
+        )
+
+        password = st.text_input(
+            "Password",
+            type="password",
+            placeholder="Enter your password",
+        )
+
+        login_clicked = st.form_submit_button(
+            "🔐 Login",
+            use_container_width=True,
+        )
+
+    if login_clicked:
+
+        if not email or not password:
+
+            st.error(
+                "❌ Please enter your email and password."
+            )
+
+        else:
+
+            with st.spinner(
+                "Authenticating..."
+            ):
+
+                if login_user(
+                    email,
+                    password,
+                ):
+                    st.success(
+                        "✅ Login successful."
+                    )
+
+                    st.rerun()
+
+    st.stop()
 
 with st.sidebar:
 
@@ -639,6 +764,34 @@ with st.sidebar:
         "🗑️ New Conversation",
         use_container_width=True,
     ):
+
+        st.session_state.messages = []
+
+        st.session_state.pending_approval = None
+
+        st.session_state.workflow = None
+
+        st.session_state.thread_id = str(
+            uuid.uuid4()
+        )
+
+        st.rerun()
+
+
+    st.markdown("---")
+
+    st.caption(
+        f"Signed in as: {st.session_state.user['email']}"
+    )
+
+    if st.button(
+        "🚪 Logout",
+        use_container_width=True,
+    ):
+
+        st.session_state.access_token = None
+
+        st.session_state.user = None
 
         st.session_state.messages = []
 

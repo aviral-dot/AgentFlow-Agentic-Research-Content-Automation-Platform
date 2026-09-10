@@ -7,7 +7,9 @@ from uuid import uuid4
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
+from src.auth.router import router as auth_router
+from src.auth.dependencies import get_current_user
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Command
 
@@ -191,6 +193,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(auth_router)
 
 
 
@@ -373,6 +376,7 @@ def build_response_text(
 @app.post("/chat")
 async def chat(
     request: Request,
+    current_user: dict = Depends(get_current_user),
 ):
 
     request_id = str(
@@ -401,7 +405,7 @@ async def chat(
             "",
         ).strip()
 
-        thread_id = data.get(
+        client_thread_id= data.get(
             "thread_id"
         )
 
@@ -422,7 +426,7 @@ async def chat(
                 detail="Query is required",
             )
 
-        if not thread_id:
+        if not client_thread_id:
 
             log_event(
                 logger,
@@ -436,6 +440,10 @@ async def chat(
                 status_code=400,
                 detail="thread_id is required",
             )
+            
+        thread_id = (
+            f"{current_user['id']}:{client_thread_id}"
+        )
 
         log_event(
             logger,
@@ -514,6 +522,7 @@ async def chat(
             },
             "metadata": {
                 "request_id": request_id,
+                "user_id": current_user["id"],
                 "workflow": "planner_executor",
                 "feature": "chat",
                 "environment": environment,
@@ -536,6 +545,7 @@ async def chat(
             level=logging.INFO,
             event="graph_execution_started",
             request_id=request_id,
+            user_id=current_user["id"],
             thread_id=thread_id,
         )
 
