@@ -12,6 +12,12 @@ from src.auth.router import router as auth_router
 from src.auth.dependencies import get_current_user
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Command
+from src.errors.exceptions import AgentFlowError
+from src.errors.handlers import (
+    agentflow_exception_handler,
+    unexpected_exception_handler,
+)
+
 
 from src.gateway.llm_gateway import LLMGateway
 from src.graphs.graph_builder import GraphBuilder
@@ -191,6 +197,34 @@ app = FastAPI(
     title="Planner-Executor Research, Blog & Email Automation API",
     version="3.0.0",
     lifespan=lifespan,
+)
+
+@app.middleware("http")
+async def request_id_middleware(
+    request: Request,
+    call_next,
+):
+    request_id = (
+        request.headers.get("X-Request-ID")
+        or str(uuid4())
+    )
+
+    request.state.request_id = request_id
+
+    response = await call_next(request)
+
+    response.headers["X-Request-ID"] = request_id
+
+    return response
+
+app.add_exception_handler(
+    AgentFlowError,
+    agentflow_exception_handler,
+)
+
+app.add_exception_handler(
+    Exception,
+    unexpected_exception_handler,
 )
 
 app.include_router(auth_router)
@@ -379,9 +413,7 @@ async def chat(
     current_user: dict = Depends(get_current_user),
 ):
 
-    request_id = str(
-        uuid4()
-    )
+    request_id = request.state.request_id
 
     request_started = perf_counter()
 
@@ -780,9 +812,7 @@ async def email_approval(
     request: Request,
 ):
 
-    request_id = str(
-        uuid4()
-    )
+    request_id = request.state.request_id
 
     request_started = perf_counter()
 

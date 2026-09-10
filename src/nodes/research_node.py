@@ -5,6 +5,12 @@ from time import perf_counter
 
 from pydantic import BaseModel, Field
 
+from src.errors.exceptions import (
+    AgentFlowError,
+    LLMFailure,
+    ResearchFailure,
+)
+
 from src.states.blogstate import AgentState
 from src.tools.research_tool import ResearchTool
 from src.utils.loggers import (
@@ -271,8 +277,10 @@ class ResearchNode:
                 )
             )
 
-        except Exception:
-
+        except AgentFlowError:
+            raise
+        
+        except Exception as exc:
             logger.exception(
                 "Research tool execution failed",
                 extra={
@@ -281,7 +289,12 @@ class ResearchNode:
                 },
             )
 
-            raise
+            raise ResearchFailure(
+                  context={
+                    "operation": "research_tool",
+                    "task_id": current_task.id,
+                  },
+            ) from exc
 
 
 
@@ -394,6 +407,9 @@ Return only the requested structured output.
                 )
             )
 
+        except AgentFlowError:
+             raise
+        
         except Exception:
 
             logger.exception(
@@ -404,7 +420,13 @@ Return only the requested structured output.
                 },
             )
 
-            raise
+            raise LLMFailure(
+                  context={
+                    "component": "research_node",
+                    "operation": "synthesis",
+                    "task_id": current_task.id,
+                  },
+            ) from exc
 
 
         

@@ -4,6 +4,10 @@ import logging
 from time import perf_counter
 
 from src.states.blogstate import AgentState, Blog
+from src.errors.exceptions import (
+    AgentFlowError,
+    LLMFailure,
+)
 from src.utils.loggers import (
     get_logger,
     log_event,
@@ -314,13 +318,21 @@ Return the result as JSON with exactly these fields:
                 prompt
             )
 
-        except Exception:
+        except AgentFlowError:
+           raise
+
+        except Exception as exc:
 
             logger.exception(
                 "Blog generation failed"
             )
 
-            raise
+            raise LLMFailure(
+        context={
+            "component": "blog_node",
+            "operation": "generation",
+        },
+    ) from exc
 
         latency_ms = round(
             (
@@ -344,15 +356,23 @@ Return the result as JSON with exactly these fields:
                     blog
                 )
 
-            except Exception:
+            except AgentFlowError:
+               raise
 
+            except Exception as exc:
                 logger.exception(
-                    "Invalid structured blog result"
-                )
+                   "Invalid structured blog result",
+                extra={
+                 "request_id": request_id,
+                },
+            )
 
-                raise ValueError(
-                    "LLM returned an invalid blog result."
-                )
+            raise LLMFailure(
+                context={
+                 "component": "blog_node",
+                "operation": "result_validation",
+                 },
+            ) from exc
 
         # Convert to dictionary so the existing
         # executor/state/email dependency logic

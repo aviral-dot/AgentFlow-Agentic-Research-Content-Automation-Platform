@@ -1,15 +1,14 @@
 models:
   - type: main
-    engine: nim
-    model: nvidia/nemotron-3.5-lightning-30b-a3b
+    engine: openai
+    model: openrouter/free
+    api_key_env_var: OPENROUTER_API_KEY
+    parameters:
+      base_url: "https://openrouter.ai/api/v1"
 
   - type: content_safety
     engine: nim
     model: nvidia/llama-3.1-nemotron-safety-guard-8b-v3
-
-  - type: topic_control
-    engine: nim
-    model: nvidia/llama-3.1-nemoguard-8b-topic-control
 
   - type: jailbreak_detection
     engine: nim
@@ -23,8 +22,6 @@ rails:
       - content safety check input $model=content_safety
 
       - jailbreak detection model
-
-      - topic safety check input $model=topic_control
 
   output:
     flows:

@@ -6,6 +6,11 @@ from time import perf_counter
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
+from src.errors.exceptions import (
+    AgentFlowError,
+    GmailFailure,
+)
+
 from src.utils.loggers import (
     get_logger,
     log_event,
@@ -146,8 +151,11 @@ class EmailTool:
                     )
 
                     return result
+            
+        except AgentFlowError:
+            raise    
 
-        except Exception:
+        except Exception as exc:
 
             total_latency_ms = round(
                 (
@@ -168,4 +176,8 @@ class EmailTool:
                 },
             )
 
-            raise
+            raise GmailFailure(
+                context={
+                  "operation": "send_email",
+                },
+            ) from exc

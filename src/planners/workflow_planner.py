@@ -4,6 +4,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from src.states.blogstate import AgentState, Task
+from src.errors.exceptions import (
+    AgentFlowError,
+    InvalidWorkflowError,
+    PlannerFailure,
+)
 from src.utils.loggers import get_logger, log_event
 
 
@@ -133,9 +138,12 @@ class WorkflowPlanner:
         ]
 
         if len(set(task_ids)) != len(task_ids):
-            raise ValueError(
-                "Planner produced duplicate task IDs."
-            )
+            raise InvalidWorkflowError(
+    context={
+        "operation": "validate_plan",
+        "reason": "duplicate_task_ids",
+    },
+)
 
         task_map = {
             task.id.strip(): task
@@ -292,10 +300,13 @@ class WorkflowPlanner:
         ) -> None:
 
             if task_id in visiting:
-                raise ValueError(
-                    "Circular dependency detected "
-                    f"around task '{task_id}'."
-                )
+                raise InvalidWorkflowError(
+    context={
+        "operation": "validate_no_cycles",
+        "reason": "circular_dependency",
+        "task_id": task_id,
+    },
+)
 
             if task_id in visited:
                 return
@@ -326,10 +337,12 @@ class WorkflowPlanner:
         query = state.get("query")
 
         if not query:
-            raise ValueError(
-                "Cannot create workflow plan because "
-                "query is missing."
-            )
+            raise InvalidWorkflowError(
+        context={
+            "operation": "plan",
+            "reason": "query_missing",
+        },
+    )
 
        
 
@@ -371,11 +384,27 @@ User request:
 """
 
        
-
-        result = await self.structured_llm.ainvoke(
+        try:
+          result = await self.structured_llm.ainvoke(
             prompt
-        )
+          )
 
+        except AgentFlowError:
+          raise
+
+        except Exception as exc:
+              logger.exception(
+                  "Workflow planner failed",
+                   extra={
+              "event": "workflow_planner_failed",
+              },
+              )
+
+              raise PlannerFailure(
+                  context={
+                   "operation": "structured_planning",
+                   },
+              ) from exc
         
         self.validate_plan(
             result.tasks

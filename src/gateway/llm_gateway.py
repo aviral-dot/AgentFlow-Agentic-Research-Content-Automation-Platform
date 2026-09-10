@@ -3,6 +3,7 @@ import os
 
 from langchain_litellm import ChatLiteLLMRouter
 from litellm import Router
+from src.errors.exceptions import AgentFlowError, LLMFailure
 
 from src.gateway.config import LLMGatewayConfig
 from src.utils.loggers import (
@@ -113,7 +114,10 @@ class LLMGateway:
                 status="success",
             )
 
-        except Exception:
+        except AgentFlowError:
+            raise
+
+        except Exception as exc:
 
             logger.exception(
                 "LLM gateway initialization failed",
@@ -125,7 +129,16 @@ class LLMGateway:
                 },
             )
 
-            raise
+            raise LLMFailure(
+                context={
+            "component": "llm_gateway",
+            "operation": "initialization",
+                },
+
+  
+            ) from exc 
+
+            
 
     @staticmethod
     def _get_api_key(
@@ -233,8 +246,11 @@ class LLMGateway:
             )
 
             return llm
+         
+        except AgentFlowError:
+            raise
 
-        except Exception:
+        except Exception as exc:
 
             logger.exception(
                 "LLM client creation failed",
@@ -247,4 +263,19 @@ class LLMGateway:
                 },
             )
 
-            raise
+            raise LLMFailure(
+                  context = {
+                      "component" : "llm_gatway",
+                      "operation" : "client_creation",
+                      "model_name" : model_name
+                  },
+            ) from exc
+            
+
+
+            
+
+
+
+
+            

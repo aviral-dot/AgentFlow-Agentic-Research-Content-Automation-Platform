@@ -3,7 +3,13 @@ import os
 from time import perf_counter
 from typing import Any
 
+
 from tavily import AsyncTavilyClient
+
+from src.errors.exceptions import (
+    AgentFlowError,
+    ResearchFailure,
+)
 
 from src.utils.loggers import (
     get_logger,
@@ -34,10 +40,12 @@ class ResearchTool:
 
         if not api_key:
 
-            raise RuntimeError(
-                "TAVILY_API_KEY environment variable "
-                "is not configured."
-            )
+            raise ResearchFailure(
+        context={
+            "component": "tavily",
+            "reason": "api_key_not_configured",
+        },
+    )
 
         self.client = AsyncTavilyClient(
             api_key=api_key
@@ -93,16 +101,25 @@ class ResearchTool:
                 include_raw_content=False,
             )
 
-        except Exception:
+        except AgentFlowError:
+              raise
+        
+        except Exception as exc:
 
             logger.exception(
                 "Tavily research failed",
                 extra={
+                    "event": "tavily_research_failed",
                     "query": query,
                 },
             )
 
-            raise
+            raise ResearchFailure(
+                context={
+                "component": "tavily",
+                 "operation": "search",
+                },
+            ) from exc
 
         latency_ms = round(
             (

@@ -7,6 +7,10 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, EmailStr, Field
 
 from src.states.blogstate import AgentState
+from src.errors.exceptions import (
+    AgentFlowError,
+    LLMFailure,
+)
 from src.tools.email_tool import EmailTool
 from src.utils.loggers import (
     get_logger,
@@ -326,13 +330,26 @@ Example:
                 prompt
             )
 
-        except Exception:
+        except AgentFlowError:
+            raise
+
+        except Exception as exc:
 
             logger.exception(
-                "Email draft generation failed"
+                "Email draft generation failed",
+                extra={
+                    "request_id": request_id,
+                    "task_id": current_task.id,
+                },
             )
 
-            raise
+            raise LLMFailure(
+                context={
+                   "component": "mail_node",
+                  "operation": "draft_generation",
+                  "task_id": current_task.id,
+                },
+            ) from exc
 
         # ====================================================
         # CONSTRUCT FINAL EMAIL BODY

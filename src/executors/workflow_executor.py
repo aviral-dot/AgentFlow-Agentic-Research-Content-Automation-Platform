@@ -1,5 +1,11 @@
 from typing import Any
 
+from src.errors.exceptions import (
+    AgentFlowError,
+    ExecutorFailure,
+    UnknownTaskError,
+)
+
 from src.executors.task_scheduler import TaskScheduler
 from src.states.blogstate import AgentState, Task
 
@@ -109,17 +115,21 @@ class WorkflowExecutor:
         )
 
         if task is None:
-
-            raise ValueError(
-                f"Task '{task_id}' does not exist."
+            raise UnknownTaskError(
+               context={
+                "operation": "mark_task_running",
+                "task_id": task_id,
+               },
             )
 
         if task.status != "pending":
-
-            raise ValueError(
-                f"Task '{task_id}' cannot transition "
-                f"from '{task.status}' to 'running'."
-            )
+               raise ExecutorFailure(
+                    context={
+                     "operation": "mark_task_running",
+                     "reason": "invalid_task_transition",
+                     "task_id": task_id,
+                    },
+               )
 
       
 
@@ -189,16 +199,22 @@ class WorkflowExecutor:
 
         if task is None:
 
-            raise ValueError(
-                f"Task '{task_id}' does not exist."
+            raise UnknownTaskError(
+                context={
+                 "operation": "mark_task_completed",
+                 "task_id": task_id,
+                },
             )
 
         if task.status != "running":
 
-            raise ValueError(
-                f"Task '{task_id}' cannot transition "
-                f"from '{task.status}' to 'completed'."
-            )
+           raise ExecutorFailure(
+        context={
+            "operation": "mark_task_completed",
+            "reason": "invalid_task_transition",
+            "task_id": task_id,
+        },
+    )
 
      
 
@@ -289,18 +305,22 @@ class WorkflowExecutor:
         )
 
         if task is None:
-
-            raise ValueError(
-                f"Task '{task_id}' does not exist."
-            )
+           raise UnknownTaskError(
+        context={
+            "operation": "mark_task_rejected",
+            "task_id": task_id,
+        },
+    )
 
         if task.status != "running":
-
-            raise ValueError(
-                f"Task '{task_id}' cannot be rejected "
-                f"from '{task.status}'."
-            )
-
+            raise ExecutorFailure(
+        context={
+            "operation": "mark_task_rejected",
+            "reason": "invalid_task_transition",
+            "task_id": task_id,
+        },
+    )
+           
         rejection_result = {
             "status": "rejected",
             "message": (
@@ -381,20 +401,26 @@ class WorkflowExecutor:
 
         if task is None:
 
-            raise ValueError(
-                f"Task '{task_id}' does not exist."
-            )
+            raise UnknownTaskError(
+        context={
+            "operation": "mark_task_failed",
+            "task_id": task_id,
+        },
+    )
 
         if task.status not in {
             "running",
             "pending",
         }:
 
-            raise ValueError(
-                f"Task '{task_id}' cannot be marked "
-                f"failed from '{task.status}'."
-            )
-
+            raise ExecutorFailure(
+        context={
+            "operation": "mark_task_failed",
+            "reason": "invalid_task_transition",
+            "task_id": task_id,
+        },
+    )
+        
         failure_result = {
             "status": "failed",
             "error": error,
