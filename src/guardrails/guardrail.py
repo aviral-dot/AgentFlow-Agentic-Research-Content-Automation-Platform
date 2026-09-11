@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 from time import perf_counter
+from langsmith import traceable
 
 import httpx
 from dotenv import load_dotenv
@@ -62,7 +63,10 @@ log_event(
 # ============================================================
 # INPUT GUARDRAIL
 # ============================================================
-
+@traceable(
+    name="input_guardrail",
+    run_type="chain",
+)
 async def check_input(
     text: str,
 ) -> bool:
@@ -185,7 +189,10 @@ async def check_input(
 # ============================================================
 # OUTPUT GUARDRAIL
 # ============================================================
-
+@traceable(
+    name="output_guardrail",
+    run_type="chain",
+)
 async def check_output(
     text: str,
 ) -> bool:

@@ -3,6 +3,7 @@
 import logging
 from time import perf_counter
 
+from langsmith import traceable
 from src.states.blogstate import AgentState, Blog
 from src.errors.exceptions import (
     AgentFlowError,
@@ -170,7 +171,10 @@ class BlogNode:
         )
 
    
-
+    @traceable(
+        name="blog_agent",
+        run_type="chain",
+    )
     async def generate_blog(
         self,
         state: AgentState,

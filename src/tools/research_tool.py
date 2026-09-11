@@ -3,7 +3,7 @@ import os
 from time import perf_counter
 from typing import Any
 
-
+from langsmith import traceable
 from tavily import AsyncTavilyClient
 
 from src.errors.exceptions import (
@@ -51,8 +51,12 @@ class ResearchTool:
             api_key=api_key
         )
 
-  
 
+  
+    @traceable(
+        name="tavily_web_search",
+        run_type="retriever",
+    )
     async def search(
         self,
         query: str,

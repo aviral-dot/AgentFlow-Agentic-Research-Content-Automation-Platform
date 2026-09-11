@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from time import perf_counter
 
+from langsmith import traceable
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
@@ -42,6 +43,10 @@ class EmailTool:
             event="email_tool_initialized",
         )
 
+    @traceable(
+        name="gmail_send_email",
+        run_type="tool",
+    )
     async def send(
         self,
         to: str,

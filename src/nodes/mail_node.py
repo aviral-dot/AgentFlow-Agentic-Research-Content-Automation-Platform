@@ -5,6 +5,7 @@ from time import perf_counter
 
 from langgraph.types import interrupt
 from pydantic import BaseModel, EmailStr, Field
+from langsmith import traceable
 
 from src.states.blogstate import AgentState
 from src.errors.exceptions import (
@@ -218,7 +219,10 @@ class EmailNode:
     # ========================================================
     # DRAFT EMAIL
     # ========================================================
-
+    @traceable(
+        name="email_draft_agent",
+        run_type="chain",
+    )
     async def draft_email(
         self,
         state: AgentState,
@@ -399,7 +403,10 @@ Example:
     # ========================================================
     # HUMAN APPROVAL
     # ========================================================
-
+    @traceable(
+        name="email_human_approval",
+        run_type="chain",
+    )
     def approve_email(
         self,
         state: AgentState,
@@ -465,7 +472,10 @@ Example:
     # ========================================================
     # SEND EMAIL
     # ========================================================
-
+    @traceable(
+        name="email_send",
+        run_type="tool",
+    )
     async def send_email(
         self,
         state: AgentState,

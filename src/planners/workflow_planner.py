@@ -2,6 +2,7 @@ import logging
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from langsmith import traceable
 
 from src.states.blogstate import AgentState, Task
 from src.errors.exceptions import (
@@ -325,6 +326,11 @@ class WorkflowPlanner:
         for task_id in dependency_graph:
             visit(task_id)
 
+
+    @traceable(
+        name="workflow_planner",
+        run_type="chain",
+    )
     async def plan(
         self,
         state: AgentState,

@@ -3,6 +3,7 @@
 import logging
 from time import perf_counter
 
+from langsmith import traceable
 from pydantic import BaseModel, Field
 
 from src.errors.exceptions import (
@@ -10,6 +11,7 @@ from src.errors.exceptions import (
     LLMFailure,
     ResearchFailure,
 )
+
 
 from src.states.blogstate import AgentState
 from src.tools.research_tool import ResearchTool
@@ -208,7 +210,10 @@ class ResearchNode:
 
 
    
-
+    @traceable(
+        name="research_agent",
+        run_type="chain",
+    )
     async def research(
         self,
         state: AgentState,
@@ -410,7 +415,7 @@ Return only the requested structured output.
         except AgentFlowError:
              raise
         
-        except Exception:
+        except Exception as exc:
 
             logger.exception(
                 "Research synthesis failed",
