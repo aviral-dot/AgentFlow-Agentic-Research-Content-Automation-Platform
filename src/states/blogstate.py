@@ -218,7 +218,6 @@ class AgentState(TypedDict, total=False):
     query: str
 
     request_id: str
-
     
 
     tasks: list[Task]
