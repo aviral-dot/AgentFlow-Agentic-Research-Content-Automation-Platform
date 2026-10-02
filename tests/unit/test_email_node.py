@@ -4,9 +4,6 @@ from pydantic import ValidationError
 from src.nodes.mail_node import EmailDraft, EmailNode
 
 
-# ============================================================
-# TEST HELPERS
-# ============================================================
 
 
 class FakeStructuredLLM:
