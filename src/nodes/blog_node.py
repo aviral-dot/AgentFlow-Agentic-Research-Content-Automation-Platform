@@ -26,7 +26,7 @@ class BlogNode:
 
         self.llm = llm
 
-        # One structured LLM call will now generate
+        
         # both the blog title and the blog content.
         self.structured_llm = (
             llm.with_structured_output(
