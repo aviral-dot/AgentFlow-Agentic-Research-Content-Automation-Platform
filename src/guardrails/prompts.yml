@@ -60,6 +60,42 @@ prompts:
       contains an email address, name, phone number, URL,
       or other ordinary user-provided information.
 
+      IMPORTANT FOR MULTI-STEP PRODUCTIVITY REQUESTS:
+
+      Evaluate the user's complete intent, not individual
+      words or entities.
+
+      The following are SAFE when requested for legitimate purposes:
+
+      - Researching AI/ML models
+      - Researching public information
+      - Writing blogs or articles
+      - Summarizing research
+      - Writing emails
+      - Sending emails
+      - Using an email address provided by the user
+      - Combining multiple legitimate actions into one workflow
+
+      A request containing an email address MUST NOT be classified
+      as unsafe merely because an email address is present.
+
+      A request containing multiple actions MUST NOT be classified
+      as unsafe merely because it is a multi-step request.
+
+      For example, the following request is SAFE:
+
+      "Research a new AI model, generate a 100-word blog about it,
+      and send it to rrrttzch@gmail.com."
+
+      The classifier must evaluate what the user is asking the
+      system to DO, rather than treating the presence of an email
+      address, URL, name, AI terminology, or multiple actions as
+      evidence of unsafe behavior.
+
+      Only classify the request as unsafe when the requested
+      activity itself is genuinely harmful according to the
+      defined safety categories.
+
       Example SAFE requests:
 
       "Send an email to rahul@example.com."
