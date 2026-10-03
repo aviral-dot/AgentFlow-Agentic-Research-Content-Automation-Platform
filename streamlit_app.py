@@ -5490,9 +5490,12 @@ if not st.session_state.access_token:
 }
 [data-testid="stMainBlockContainer"] { padding:0 !important; }
 body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
-  overflow:hidden !important;
   background:#030506 !important;
 }
+[data-testid="stMain"], [data-testid="stAppViewContainer"] {
+  overflow-y:auto !important;
+}
+
 
 .af-login-world {
   position:fixed; inset:0; z-index:0; overflow:hidden;
