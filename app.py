@@ -4,6 +4,7 @@ import os
 from contextlib import asynccontextmanager
 from time import perf_counter
 from uuid import uuid4
+from langsmith import traceable
 
 import uvicorn
 from dotenv import load_dotenv

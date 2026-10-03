@@ -1,10 +1,10 @@
 models:
   - type: main
     engine: openai
-    model: openrouter/free
-    api_key_env_var: OPENROUTER_API_KEY
-    parameters:
-      base_url: "https://openrouter.ai/api/v1"
+    model: nvidia/nemotron-3.5-lightning-30b-a3b
+    # api_key_env_var: OPENROUTER_API_KEY
+    # parameters: openrouter/free
+    #   base_url: "https://openrouter.ai/api/v1"
 
   - type: content_safety
     engine: nim
